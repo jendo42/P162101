@@ -104,9 +104,13 @@ void enableCol(int address)
 {
   // mapping of HW adresses of columns
   // total 29 columns
-  static const uint8_t colMap[] = {
+  static const uint8_t colMap_old[] = {
      0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 15, 14, 13, 12, 11,
      0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 12, 11
+  };
+  static const uint8_t colMap[] = {
+     10,  9,  8,  7,  6,  5,  4,  3,  2,  1, 0, 11, 12, 13, 14, 15,
+     10,  9,  8,  7,  6,  5,  4,  3,  2,  1, 0, 14, 15
   };
 
   // extract bus address
@@ -274,17 +278,36 @@ bool readClockFake(char *str)
   return true;
 }
 
-// temperature is in deg. Celsius * 10
-// (one decimal place fixed point)
-bool readSHT40(int *t, int *rh)
+static uint32_t sht40_lastCommandTime = -1;
+bool triggerSHT40()
 {
   if (init_status & STATUS_ESHT40) {
     return false;
   }
-  static uint32_t lastCommandTime = 0;
+  if (sht40_lastCommandTime == -1) {
+    Wire.beginTransmission(0x44);
+    Wire.write(0xFD);
+    uint8_t ret = Wire.endTransmission();
+    sht40_lastCommandTime = millis();
+    return ret == 0;
+  }
+
+  return true;
+}
+
+// temperature is in deg. Celsius * 10
+// (one decimal place fixed point)
+bool readSHT40(int *out_t, int *out_rh)
+{
+  static int t;
+  static int rh;
+  if (init_status & STATUS_ESHT40) {
+    return false;
+  }
   uint8_t buff[6];
-  uint32_t elapsed = millis() - lastCommandTime;
-  if (elapsed >= 10) {
+  uint32_t elapsed = millis() - sht40_lastCommandTime;
+  if (sht40_lastCommandTime != -1 && elapsed >= 10) {
+    sht40_lastCommandTime = -1;
     // read data from sensor
     if (Wire.requestFrom(0x44, sizeof(buff)) != sizeof(buff)) {
       return false;
@@ -292,7 +315,7 @@ bool readSHT40(int *t, int *rh)
     Wire.readBytes(buff, sizeof(buff));
     if (t) {
       int val = (buff[0] << 8) | buff[1];
-      *t = -450 + 1750 * val / 65535;
+      t = -450 + 1750 * val / 65535;
     }
     if (rh) {
       int val = (buff[3] << 8) | buff[4];
@@ -303,14 +326,15 @@ bool readSHT40(int *t, int *rh)
       if (lrh < 0) {
         lrh = 0;
       }
-      *rh = lrh;
+      rh = lrh;
     }
+  }
 
-    // we can send command now
-    Wire.beginTransmission(0x44);
-    Wire.write(0xFD);
-    Wire.endTransmission();
-    lastCommandTime = millis();
+  if (out_t) {
+    *out_t = t;
+  }
+  if (out_rh) {
+    *out_rh = rh;
   }
 
   return true;
@@ -320,6 +344,9 @@ bool readTemperature(char *str)
 {
   int t;
   if (readSHT40(&t, NULL)) {
+    if (!triggerSHT40()) {
+      return false;
+    }
     value2str(t, str);
     str[5] = ' ';
     str[6] = '`';
@@ -335,6 +362,9 @@ bool readHumidity(char *str)
 {
   int rh;
   if (readSHT40(NULL, &rh)) {
+    if (!triggerSHT40()) {
+      return false;
+    }
     value2str(rh, str);
     str[5] = ' ';
     str[6] = '%';
@@ -347,7 +377,8 @@ bool readHumidity(char *str)
 
 void setup()
 {
-  // TODO: wait for voltage stabilize
+  // wait for voltage stabilize
+  delay(100);
 
   // initialize pins
   pinMode(GPIO_MAT_ADDR0_BIT, OUTPUT);
@@ -410,9 +441,12 @@ void setup()
   }
 
   // initialize SHT40
-  readSHT40(NULL, NULL);
-  delay(11);
-  if (!readSHT40(NULL, NULL)) {
+  if (triggerSHT40()) {
+    delay(11);
+    if (!readSHT40(NULL, NULL)) {
+      init_status |= STATUS_ESHT40;
+    }
+  } else {
     init_status |= STATUS_ESHT40;
   }
 
@@ -657,6 +691,8 @@ void loop() {
           drawClock(str_buffer);
         } else {
           //snprintf(str_buffer, sizeof(str_buffer), "%u", display);
+          //snprintf(str_buffer, sizeof(str_buffer), "%u", led_power);
+          //snprintf(str_buffer, sizeof(str_buffer), "%u", light_sensor);
           drawText(1, 1, str_buffer);
         }
       }
