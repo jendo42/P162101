@@ -14,6 +14,14 @@
 // 'NRST' -> '!RST' in schematic as Unknown style pin
 // ACTIVE-LOW
 
+// 'PB4' -> '!ALM' in schematic as Atmel style pin
+#define GPIO_N_ALM GPIO_BOOT0_BIT, GPIO_BOOT0_PORT
+#define GPIO_N_ALM_BIT PB4
+#define GPIO_N_ALM_NBIT 4
+#define GPIO_N_ALM_PORT PORTB
+#define GPIO_N_ALM_DDR DDR(GPIO_N_ALM_PORT)
+#define GPIO_N_ALM_PIN PIN(GPIO_N_ALM_PORT)
+
 // 'PB8' -> 'BOOT0' in schematic as Atmel style pin
 #define GPIO_BOOT0 GPIO_BOOT0_BIT, GPIO_BOOT0_PORT
 #define GPIO_BOOT0_BIT PB8
@@ -175,11 +183,14 @@
 
 #define MAT_COLS 29
 
-#define MAT_CONTROL_MASK ( \
-  bit(GPIO_N_MAT_ADDRL_NBIT) | \
-  bit(GPIO_N_MAT_ADDRH_NBIT) | \
-  bit(GPIO_MAT_ADDR0_NBIT) | \
-  bit(GPIO_MAT_ADDR1_NBIT) | \
-  bit(GPIO_MAT_ADDR2_NBIT) | \
-  bit(GPIO_MAT_ADDR3_NBIT) \
+#define MAT_COL_ADDR_MASK ( \
+    bit(GPIO_MAT_ADDR0_NBIT) \
+  | bit(GPIO_MAT_ADDR1_NBIT) \
+  | bit(GPIO_MAT_ADDR2_NBIT) \
+  | bit(GPIO_MAT_ADDR3_NBIT) \
+)
+
+#define MAT_COL_CTRL_MASK ( \
+    bit(GPIO_N_MAT_ADDRL_NBIT) \
+  | bit(GPIO_N_MAT_ADDRH_NBIT) \
 )
