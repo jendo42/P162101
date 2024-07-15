@@ -512,6 +512,9 @@ void setup()
     }
     showMessage(str_buffer, 128 * 4);
   }
+
+  // do not allow to continue if buttons are stuck
+  while (digitalRead(GPIO_B1_BIT) == LOW || digitalRead(GPIO_B2_BIT) == LOW || digitalRead(GPIO_B3_BIT) == LOW || digitalRead(GPIO_BOOT0_BIT) == HIGH);
 }
 
 void update_brightness(int light_min, int light_max, int power_min, int power_max)
@@ -590,15 +593,73 @@ void drawClock(char *str, bool forceRedraw)
   }
 }
 
+void handle_button(int button)
+{
+  uint8_t data;
+  bool tm = test_mode();
+  int max_display = tm ? 6 : 3;
+  if (tm) {
+    switch (button) {
+      case GPIO_BOOT0_BIT:
+        if (init_sequence == SEQ::IDLE) {
+          if (++new_display >= max_display) {
+            new_display = 0;
+          }
+        }
+        break;
+      case GPIO_B3_BIT:
+        --clock_trim;
+        writeRTC_trim(clock_trim);
+        break;
+      case GPIO_B2_BIT:
+        readRTC(MCP79410_CONTROL, &data, 1);
+        data ^= bit(MCP79410_CONTROL_CRSTRIM);
+        writeRTC(MCP79410_CONTROL, &data, 1);
+        if (data & bit(MCP79410_CONTROL_CRSTRIM)) {
+          showMessage("TRIM  on", 128*4);
+        } else {
+          showMessage("TRIM  off", 128*4);
+        }
+        break;
+      case GPIO_B1_BIT:
+        ++clock_trim;
+        writeRTC_trim(clock_trim);
+        break;
+    }
+  } else {
+    switch (button) {
+      case GPIO_BOOT0_BIT:
+        if (init_sequence == SEQ::IDLE) {
+          if (++new_display >= max_display) {
+            new_display = 0;
+          }
+        }
+        break;
+      case GPIO_B3_BIT:
+        readRTC(MCP79410_RTCSEC, &data, 1);
+        data = (data & 0x80);
+        writeRTC(MCP79410_RTCSEC, &data, 1);
+        break;
+      case GPIO_B2_BIT:
+        readRTC(MCP79410_RTCMIN, &data, 1);
+        data = bcdUnpack((bcdPack(data) + 1) % 60);
+        writeRTC(MCP79410_RTCMIN, &data, 1);
+        break;
+      case GPIO_B1_BIT:
+        readRTC(MCP79410_RTCHOUR, &data, 1);
+        data = (data & 0xC0) | bcdUnpack((bcdPack(data & 0x3F) + 1) % 24);
+        writeRTC(MCP79410_RTCHOUR, &data, 1);
+        break;
+    }
+  }
+}
+
 bool update_buttons()
 {
   bool button_pressed = false;
   if (digitalRead(GPIO_B1_BIT) == LOW) {
     if (btn_press[0] == 0) {
-      uint8_t data;
-      readRTC(MCP79410_RTCHOUR, &data, 1);
-      data = (data & 0xC0) | bcdUnpack((bcdPack(data & 0x3F) + 1) % 24);
-      writeRTC(MCP79410_RTCHOUR, &data, 1);
+      handle_button(GPIO_B1_BIT);
       button_pressed = true;
     }
     if (++btn_press[0] >= 64) {
@@ -609,10 +670,7 @@ bool update_buttons()
   }
   if (digitalRead(GPIO_B2_BIT) == LOW) {
     if (btn_press[1] == 0) {
-      uint8_t data;
-      readRTC(MCP79410_RTCMIN, &data, 1);
-      data = bcdUnpack((bcdPack(data) + 1) % 60);
-      writeRTC(MCP79410_RTCMIN, &data, 1);
+      handle_button(GPIO_B2_BIT);
       button_pressed = true;
     }
     if (++btn_press[1] >= 64) {
@@ -623,10 +681,7 @@ bool update_buttons()
   }
   if (digitalRead(GPIO_B3_BIT) == LOW) {
     if (btn_press[2] == 0) {
-      uint8_t data;
-      readRTC(MCP79410_RTCSEC, &data, 1);
-      data = (data & 0x80);
-      writeRTC(MCP79410_RTCSEC, &data, 1);
+      handle_button(GPIO_B3_BIT);
       button_pressed = true;
     }
     if (++btn_press[2] >= 64) {
@@ -636,10 +691,8 @@ bool update_buttons()
     btn_press[2] = 0;
   }
   if (digitalRead(GPIO_BOOT0_BIT) == HIGH) {
-    if (btn_press[3] == 0 && init_sequence == SEQ::IDLE) {
-      if (++new_display >= 3) {
-        new_display = 0;
-      }
+    if (btn_press[3] == 0) {
+      handle_button(GPIO_BOOT0_BIT);
       button_pressed = true;
     }
     if (++btn_press[3] >= 64) {
