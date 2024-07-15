@@ -13,6 +13,7 @@
 #define STATUS_EBATTERY   1
 #define STATUS_ERTC       2
 #define STATUS_ESHT40     4
+#define STATUS_TEST       8
 
 enum class SEQ {
   WARMUP,
@@ -34,6 +35,7 @@ static int led_power = 255;
 static int btn_press[4];
 static int display;
 static int new_display;
+static int clock_trim;
 
 // LED matrix control variables
 #define BUFFER_SIZE (MAT_COLS * 2)
@@ -239,6 +241,28 @@ uint8_t writeRTC(uint8_t address, uint8_t *buffer, size_t size)
   return Wire.endTransmission();
 }
 
+int readRTC_trim()
+{
+  uint8_t data;
+  readRTC(MCP79410_OSCTRIM, &data, 1);
+  int trim = data & 0x7F;
+  if (~data & 0x80) {
+    trim = -trim;
+  }
+  return trim;
+}
+
+void writeRTC_trim(int trim)
+{
+  uint8_t data;
+  if (trim < 0) {
+    data = -trim & 0x7F;
+  } else {
+    data = (trim & 0x7F) | 0x80;
+  }
+  writeRTC(MCP79410_OSCTRIM, &data, 1);
+}
+
 bool readClock(char *str)
 {
   uint8_t reg[3];
@@ -404,6 +428,11 @@ void calibration_capture()
   }
 }
 
+bool test_mode()
+{
+  return init_status & STATUS_TEST;
+}
+
 void setup()
 {
   // wait for voltage stabilize
@@ -459,6 +488,11 @@ void setup()
   Wire.setClock(100000);
   Wire.setTimeout(10);
 
+  // enable test mode by pressing B1 and B3 together
+  if (digitalRead(GPIO_B1_BIT) == LOW && digitalRead(GPIO_B3_BIT) == LOW) {
+    init_status |= STATUS_TEST;
+  }
+
   // initialize RTC
   uint8_t reg;
   if (readRTC(MCP79410_RTCWKDAY, &reg, 1)) {
@@ -471,13 +505,17 @@ void setup()
       writeRTC(MCP79410_RTCHOUR, &reg, 1);
       init_status |= STATUS_EBATTERY;
     }
+
+    // clock output for measurement
     reg = bit(MCP79410_CONTROL_SQWEN);
-    reg |= bit(MCP79410_CONTROL_SQWFS0);
-    reg |= bit(MCP79410_CONTROL_SQWFS1);
-    //reg |= bit(MCP79410_CONTROL_CRSTRIM);
+    if (test_mode()) {
+      reg |= bit(MCP79410_CONTROL_SQWFS0);
+      reg |= bit(MCP79410_CONTROL_SQWFS1);
+    }
     writeRTC(MCP79410_CONTROL, &reg, 1);
-    reg = 0x01;
-    writeRTC(MCP79410_OSCTRIM, &reg, 1);
+
+    // measured with 10p caps @ 25°C
+    writeRTC_trim(85);
   } else {
     init_status |= STATUS_ERTC;
   }
@@ -501,6 +539,9 @@ void setup()
   // show error
   if (init_status != STATUS_OK) {
     str_buffer[0] = 0;
+    if (init_status & STATUS_TEST) {
+      strcat(str_buffer, " TEST! ");
+    }
     if (init_status & STATUS_EBATTERY) {
       strcat(str_buffer, " BAT! ");
     }
@@ -836,6 +877,22 @@ void loop() {
         if (!readHumidity(str_buffer)) {
           strcpy(str_buffer, "SHT40?");
         }
+        break;
+      case 3:
+        str_buffer[0] = 'L';
+        str_buffer[1] = ':';
+        itoa(light_sensor, str_buffer+2, 10);
+        break;
+      case 4:
+        str_buffer[0] = 'P';
+        str_buffer[1] = ':';
+        itoa(led_power, str_buffer+2, 10);
+        break;
+      case 5:
+        clock_trim = readRTC_trim();
+        str_buffer[0] = 'T';
+        str_buffer[1] = ':';
+        itoa(clock_trim, str_buffer+2, 10);
         break;
       default:
         break;
