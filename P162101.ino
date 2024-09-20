@@ -1,6 +1,5 @@
 #include <Wire.h>
 #include <SPI.h>
-#include <limits.h>
 
 #include "P162101.h"
 #include "MCP79410.h"
@@ -8,11 +7,11 @@
 #include "font3x5.h"
 #include "font3x5_2.h"
 #include "gamma.h"
+#include "utility.h"
+#include "names.h"
+#include "game.h"
 
 #define STATUS_OK         0
-#define STATUS_EBATTERY   1
-#define STATUS_ERTC       2
-#define STATUS_ESHT40     4
 #define STATUS_TEST       8
 
 enum class SEQ {
@@ -25,90 +24,61 @@ enum class SEQ {
 };
 
 // system state variables
-static int init_status = STATUS_OK;
+int init_status = STATUS_OK;
+
 static SEQ init_sequence = SEQ::WARMUP;
 static uint32_t msg_timer = 0;
 static const char *msg_text = NULL;
 static char str_buffer[64];
+static char str_temp[64];
+static char str_rh[64];
 static int light_sensor = 0;
 static int led_power = 255;
+static bool clock_reload = false;
+static bool autoscroll = 0;
+static int text_scroll = 0;
+
 static int btn_press[4];
+static bool btn_longpress[4];
+const int btn_map[] = {
+  GPIO_B1_BIT,
+  GPIO_B2_BIT,
+  GPIO_B3_BIT,
+  GPIO_BOOT0_BIT,
+};
+const int btn_map_state[] = {
+  LOW,
+  LOW,
+  LOW,
+  HIGH,
+};
+
 static int display;
 static int new_display;
 static int clock_trim;
+static int game_active;
+static int autotransition_timeout = 1;
 
 // LED matrix control variables
 #define BUFFER_SIZE (MAT_COLS * 2)
 static int col = 0;
-static uint64_t frame_cnt = 0;
+static volatile uint64_t frame_cnt = 0;
 static uint8_t buffers[2][BUFFER_SIZE] = { 0 };
 static uint8_t *frontbuffer = &buffers[0][0];
 static uint8_t *backbuffer = &buffers[1][0];
 static uint32_t viewport_x = 0;
-static TIM_HandleTypeDef htim;
-static HardwareTimer calibration_timer;
+static HardwareTimer display_timer;
 
-static constexpr inline void xchg(int &a,  int &b)
+extern "C" void HardFault_Handler(void)
 {
-  int x = a;
-  a = b;
-  b = x;
-}
-
-static inline uint16_t rotl16(uint16_t n, unsigned int c)
-{
-  const unsigned int mask = (CHAR_BIT*sizeof(n) - 1);
-  c &= mask;
-  return (n<<c) | (n>>( (-c)&mask ));
-}
-
-static inline uint16_t rotr16(uint16_t n, unsigned int c)
-{
-  const unsigned int mask = (CHAR_BIT*sizeof(n) - 1);
-  c &= mask;
-  return (n>>c) | (n<<( (-c)&mask ));
-}
-
-uint8_t bcdPack(uint8_t x)
-{
-  return 10 * (x >> 4) + (x & 0xF);
-}
-
-uint8_t bcdUnpack(uint8_t x)
-{
-  return ((x / 10) << 4) | (x % 10);
-}
-
-void nibble2hex(uint8_t value, char *str)
-{
-  uint8_t c = value & 0xF;
-  c += (c >= 10) ? 'A' : '0';
-  str[0] = c;
-  str[1] = 0;
-}
-
-void byte2hex(uint8_t value, char *str)
-{
-  nibble2hex(value >> 4, str);
-  nibble2hex(value, str + 1);
-}
-
-// WARNING: this does not terminate string with '\0'
-void value2str(int value, char *str)
-{
-  bool minus = false;
-  if (value < 0) {
-    minus = true;
-    value = -value;
-    str[0] = '-';
-  } else {
-    int digit = (value / 1000) % 10;
-    str[0] = digit ? digit + '0' : ' ';
+  while (1) {
+    enableCol(14);
+    transmitCol(0xEE);
+    enableRows();
+    for (uint32_t i = 0x800; i; i--) asm("NOP");
+    disableRows();
+    for (uint32_t i = 0x10000; i; i--) asm("NOP");
   }
-  str[1] = (value /  100) % 10 + '0';
-  str[2] = (value /   10) % 10 + '0';
-  str[3] = '.';
-  str[4] = (value /    1) % 10 + '0';
 }
 
 void showMessage(const char *text, uint32_t frames)
@@ -171,16 +141,25 @@ void transmitCol(uint8_t colData)
   digitalWrite(GPIO_SPI_NSS_BIT, HIGH);
 }
 
-void transmitColSPI(uint8_t colData)
-{
-  digitalWrite(GPIO_SPI_NSS_BIT, LOW);
-  SPI.transfer(colData);
-  digitalWrite(GPIO_SPI_NSS_BIT, HIGH);
-}
-
 void clearScreen(uint8_t pattern)
 {
   memset(backbuffer, pattern, BUFFER_SIZE);
+}
+
+void xorPixel(int x, int y)
+{
+  uint8_t p = 1 << y;
+  if (x >= 0 && x < BUFFER_SIZE) {
+    backbuffer[x] ^= p;
+  }
+}
+
+bool getPixel(int x, int y)
+{
+  uint8_t p = 1 << y;
+  if (x >= 0 && x < BUFFER_SIZE) {
+    return backbuffer[x] & p;
+  }
 }
 
 uint8_t glyphWidth(char ch)
@@ -188,8 +167,9 @@ uint8_t glyphWidth(char ch)
   return font3x5_2_offsets[ch - ' '][1] + 1;
 }
 
-void drawText(int x0, int y0, const char *text)
+int drawText(int x0, int y0, const char *text)
 {
+  int w = 0;
   while (*text) {
     char ch = *text - ' ';
     uint8_t o = font3x5_2_offsets[ch][0];
@@ -205,10 +185,14 @@ void drawText(int x0, int y0, const char *text)
         backbuffer[x0] ^= g;
       }
       ++x0;
+      ++w;
     }
     ++x0;
+    ++w;
     ++text;
   }
+
+  return w;
 }
 
 void swapBuffers()
@@ -218,64 +202,46 @@ void swapBuffers()
   backbuffer = x;
 }
 
-size_t readRTC(uint8_t address, uint8_t *buffer, size_t size)
+bool readClock(char *str, int type)
 {
-  if (init_status & STATUS_ERTC) {
-    return 0;
-  }
-  Wire.beginTransmission(MCP79410_ADDR_RTC);
-  Wire.write(address);
-  Wire.endTransmission(false);
-  Wire.requestFrom(MCP79410_ADDR_RTC, size);
-  return Wire.readBytes(buffer, size);
-}
-
-uint8_t writeRTC(uint8_t address, uint8_t *buffer, size_t size)
-{
-  if (init_status & STATUS_ERTC) {
-    return 0;
-  }
-  Wire.beginTransmission(MCP79410_ADDR_RTC);
-  Wire.write(address);
-  Wire.write(buffer, size);
-  return Wire.endTransmission();
-}
-
-int readRTC_trim()
-{
-  uint8_t data;
-  readRTC(MCP79410_OSCTRIM, &data, 1);
-  int trim = data & 0x7F;
-  if (~data & 0x80) {
-    trim = -trim;
-  }
-  return trim;
-}
-
-void writeRTC_trim(int trim)
-{
-  uint8_t data;
-  if (trim < 0) {
-    data = -trim & 0x7F;
-  } else {
-    data = (trim & 0x7F) | 0x80;
-  }
-  writeRTC(MCP79410_OSCTRIM, &data, 1);
-}
-
-bool readClock(char *str)
-{
-  uint8_t reg[3];
+  uint8_t reg[7];
+  int day;
   if (readRTC(MCP79410_RTCSEC, reg, sizeof(reg))) {
-    str[0] = ((reg[2] >> 4) & 0x03) + '0';
-    str[1] = ((reg[2] >> 0) & 0x0F) + '0';
-    str[2] = ':';
-    str[3] = ((reg[1] >> 4) & 0x07) + '0';
-    str[4] = ((reg[1] >> 0) & 0x0F) + '0';
-    str[5] = ':';
-    str[6] = ((reg[0] >> 4) & 0x07) + '0';
-    str[7] = ((reg[0] >> 0) & 0x0F) + '0';
-    str[8] = 0;
+    switch (type) {
+      case 0:
+        str[0] = ((reg[2] >> 4) & 0x03) + '0'; // h
+        str[1] = ((reg[2] >> 0) & 0x0F) + '0';
+        str[2] = ':';
+        str[3] = ((reg[1] >> 4) & 0x07) + '0'; // m
+        str[4] = ((reg[1] >> 0) & 0x0F) + '0';
+        str[5] = ':';
+        str[6] = ((reg[0] >> 4) & 0x07) + '0'; // s
+        str[7] = ((reg[0] >> 0) & 0x0F) + '0';
+        str[8] = 0;
+        break;
+      case 1:
+        day = dayOfWeek(bcdPack(reg[6]), bcdPack(reg[5] & 0x1F), bcdPack(reg[4] & 0x3F)) - 1;
+        strcpy(str, weekday_names_sk[day]);
+        strupr(str);
+        break;
+      case 2:
+        str[0] = ((reg[4] >> 4) & 0x03) + '0'; // d
+        str[1] = ((reg[4] >> 0) & 0x0F) + '0';
+        str[2] = '.';
+        str[3] = ((reg[5] >> 4) & 0x01) + '0'; // m
+        str[4] = ((reg[5] >> 0) & 0x0F) + '0';
+        str[5] = '.';
+        str[6] = ((reg[6] >> 4) & 0x0F) + '0'; // y
+        str[7] = ((reg[6] >> 0) & 0x0F) + '0';
+        str[8] = 0;
+        break;
+      case 3:
+        strcpy(str, calendar_names_sk[bcdPack(reg[5] & 0x1F) - 1][bcdPack(reg[4] & 0x3F) - 1]);
+        strupr(str);
+        break;
+      default:
+        break;
+    }
     return true;
   }
 
@@ -316,121 +282,66 @@ bool readClockFake(char *str)
   return true;
 }
 
-static int32_t sht40_lastCommandTime = -1;
-bool triggerSHT40()
-{
-  if (sht40_lastCommandTime != -1 || (init_status & STATUS_ESHT40)) {
-    return false;
-  }
-
-  Wire.beginTransmission(SHT4X_ADDR);
-  Wire.write(SHT4X_LPM);
-  if (Wire.endTransmission() == 0) {
-    sht40_lastCommandTime = millis();
-    return true;
-  }
-
-  return false;
-}
-
-// temperature is in deg. Celsius * 10
-// (one decimal place fixed point)
-bool readSHT40(int *out_t, int *out_rh)
-{
-  if (sht40_lastCommandTime == -1 || (init_status & STATUS_ESHT40)) {
-    return false;
-  }
-
-  uint8_t buff[6];
-  uint32_t elapsed = millis() - sht40_lastCommandTime;
-  if (elapsed > 10) {
-    // read data from sensor
-    sht40_lastCommandTime = -1;
-    if (Wire.requestFrom(SHT4X_ADDR, sizeof(buff)) != sizeof(buff)) {
-      return false;
-    }
-    Wire.readBytes(buff, sizeof(buff));
-    if (out_t) {
-      int val = (buff[0] << 8) | buff[1];
-      *out_t = -450 + 1750 * val / 65535;
-    }
-    if (out_rh) {
-      int val = (buff[3] << 8) | buff[4];
-      int lrh = -60 + 1250 * val / 65535;
-      if (lrh > 1000) {
-        lrh = 1000;
-      }
-      if (lrh < 0) {
-        lrh = 0;
-      }
-      *out_rh = lrh;
-    }
-  }
-
-  return true;
-}
-
-bool readTemperature(char *str)
-{
-  static int t;
-  int cur;
-  if (readSHT40(&cur, NULL)) {
-    if (!triggerSHT40()) {
-      return false;
-    }
-
-    // moving average (4 frames delay)
-    t += (cur - t) >> 2;
-    value2str(t, str);
-    str[5] = ' ';
-    str[6] = '`';
-    str[7] = 'C';
-    str[8] = 0;
-    return true;
-  }
-
-  return false;
-}
-
-bool readHumidity(char *str)
+bool readTemperatureHumidity(char *temp_str, char *rh_str)
 {
   static int rh;
-  int cur;
-  if (readSHT40(NULL, &cur)) {
+  static int t;
+  static int trimm_timer = 0;
+  int c1, c2;
+  if (readSHT40(&c1, &c2)) {
     if (!triggerSHT40()) {
       return false;
     }
 
     // moving average (4 frames delay)
-    rh += (cur - rh) >> 2;
-    value2str(rh, str);
-    str[5] = ' ';
-    str[6] = '%';
-    str[7] = 0;
+    t += (c1 - t) >> 2;
+    value2str(t, temp_str);
+    temp_str[5] = ' ';
+    temp_str[6] = '`';
+    temp_str[7] = 'C';
+    temp_str[8] = 0;
+
+    // moving average (4 frames delay)
+    rh += (c2 - rh) >> 2;
+    value2str(rh, rh_str);
+    rh_str[5] = ' ';
+    rh_str[6] = '%';
+    rh_str[7] = 0;
+
+    // update clock trim
+    if (++trimm_timer >= 127) {
+      trimm_timer = 0;
+      trimRTC(t);
+    }
     return true;
   }
 
   return false;
-}
-
-static int32_t g_rtcPulse;
-
-void calibration_capture()
-{
-  static uint32_t tick_captures[2];
-  static int tick_addr = 0;
-  tick_captures[tick_addr++] = calibration_timer.getCaptureCompare(1);
-  if (tick_addr >= 2) {
-    tick_addr = 0;
-    int32_t diff = tick_captures[1] - tick_captures[0];
-    g_rtcPulse += (diff - g_rtcPulse) >> 6;
-    calibration_timer.setCount(0);
-  }
 }
 
 bool test_mode()
 {
   return init_status & STATUS_TEST;
+}
+
+void display_begin()
+{
+  int addr = (col + viewport_x) % BUFFER_SIZE;
+  enableCol(col);
+  transmitCol(frontbuffer[addr]);
+  enableRows();
+}
+
+void display_end()
+{
+  // switch off LEDS
+  disableRows();
+
+  // update image data pointer
+  if (++col >= MAT_COLS) {
+    col = 0;
+    ++frame_cnt;
+  }
 }
 
 void setup()
@@ -475,12 +386,6 @@ void setup()
 
   analogReference(AR_DEFAULT);
 
-  //SPI.setMOSI(GPIO_SPI_MOSI_BIT);
-  //SPI.setSCLK(GPIO_SPI_SCK_BIT);
-  //SPI.setSSEL(GPIO_SPI_NSS_BIT);
-  //SPI.begin();
-  //SPI.beginTransaction(SPISettings(6000000, LSBFIRST, SPI_MODE0));
-
   // I2C comm parameters
   Wire.setSDA(GPIO_SDA_BIT);
   Wire.setSCL(GPIO_SCL_BIT);
@@ -514,19 +419,21 @@ void setup()
     }
     writeRTC(MCP79410_CONTROL, &reg, 1);
 
-    // measured with 10p caps @ 25°C
-    writeRTC_trim(85);
+    // reset trim to default
+    trimRTC(26);
+
+    // seed RNG
+    uint8_t seed[4];
+    readRTC(MCP79410_RTCSEC, seed, sizeof(seed));
+    seedRand(*(int *)&seed[0]);
   } else {
     init_status |= STATUS_ERTC;
   }
 
   // init clock calibration timer
-  calibration_timer.setup(TIM3);
-  calibration_timer.setMode(1, TIMER_INPUT_CAPTURE_FALLING, GPIO_N_ALM_BIT);
-  //calibration_timer.setPrescaleFactor(1199);
-  calibration_timer.setOverflow(1199);
-  calibration_timer.attachInterrupt(1, &calibration_capture);
-  //calibration_timer.resumeChannel(1);
+  display_timer.setup(TIM14);
+  display_timer.setPWM(1, NC, MAT_COLS * 100, 1, &display_begin, &display_end);
+  display_timer.resume();
 
   // initialize SHT40
   if (!triggerSHT40()) {
@@ -538,7 +445,6 @@ void setup()
 
   // show error
   if (init_status != STATUS_OK) {
-    str_buffer[0] = 0;
     if (init_status & STATUS_TEST) {
       strcat(str_buffer, " TEST! ");
     }
@@ -568,19 +474,31 @@ void update_brightness(int light_min, int light_max, int power_min, int power_ma
   if (i < 0) {
     i = 0;
   }
-  
+
   int r2 = power_max - power_min;
   led_power = power_min + (r2 * i / r);
+
+  // clamp power
+  if (led_power > 255) {
+    led_power = 255;
+  }
+  if (led_power < 0) {
+    led_power = 0;
+  }
+
+  int gamma = gamma_lut_8to8[led_power];
+  display_timer.setCaptureCompare(1, gamma * 100 / 255, PERCENT_COMPARE_FORMAT);
 }
 
-void drawClock(char *str, bool forceRedraw)
+void drawClock(char *str, bool reset)
 {
   static char lastClock[9];
   static bool changed[8];
   static uint16_t image[MAT_COLS];
   static int animFrame = -1;
-  if (forceRedraw) {
+  if (reset) {
     animFrame = -1;
+    strcpy(lastClock, str);
     drawText(1, 1, str);
     return;
   }
@@ -634,20 +552,52 @@ void drawClock(char *str, bool forceRedraw)
   }
 }
 
+#define SCREENS_BASE 7
+#define SCREENS_TEST 3
+
+int get_screens()
+{
+  int screens = SCREENS_BASE;
+  if (test_mode()) {
+    screens += SCREENS_TEST;
+  }
+  return screens;
+}
+
 void handle_button(int button)
 {
+  bool longpress = button & 0x80000000;
+  button &= 0xFFFF;
+
   uint8_t data;
   bool tm = test_mode();
-  int max_display = tm ? 6 : 3;
+  int max_display = get_screens();
+  if (game_active) {
+    if (button == GPIO_BOOT0_BIT) {
+      game_active = 0;
+    } else {
+      handle_button_game(button);
+    }
+    return;
+  }
+  if (button == GPIO_BOOT0_BIT) {
+    if (longpress) {
+      autotransition_timeout = !autotransition_timeout;
+      if (autotransition_timeout) {
+        showMessage("AUTO  on", 128 * 4);
+      } else {
+        showMessage("AUTO  off", 128 * 4);
+      }
+    } else if (msg_timer > 0) {
+      msg_timer = 1;
+    } else if (init_sequence == SEQ::IDLE) {
+      if (++new_display >= max_display) {
+        new_display = 0;
+      }
+    }
+  }
   if (tm) {
     switch (button) {
-      case GPIO_BOOT0_BIT:
-        if (init_sequence == SEQ::IDLE) {
-          if (++new_display >= max_display) {
-            new_display = 0;
-          }
-        }
-        break;
       case GPIO_B3_BIT:
         --clock_trim;
         writeRTC_trim(clock_trim);
@@ -667,15 +617,8 @@ void handle_button(int button)
         writeRTC_trim(clock_trim);
         break;
     }
-  } else {
+  } else if (display == 0) {
     switch (button) {
-      case GPIO_BOOT0_BIT:
-        if (init_sequence == SEQ::IDLE) {
-          if (++new_display >= max_display) {
-            new_display = 0;
-          }
-        }
-        break;
       case GPIO_B3_BIT:
         readRTC(MCP79410_RTCSEC, &data, 1);
         data = (data & 0x80);
@@ -692,95 +635,65 @@ void handle_button(int button)
         writeRTC(MCP79410_RTCHOUR, &data, 1);
         break;
     }
+  } else if (display == 2) {
+    switch (button) {
+      case GPIO_B1_BIT:
+        readRTC(MCP79410_RTCDATE, &data, 1);
+        data = bcdUnpack((bcdPack(data) + 1));
+        writeRTC(MCP79410_RTCDATE, &data, 1);
+        break;
+      case GPIO_B2_BIT:
+        readRTC(MCP79410_RTCMTH, &data, 1);
+        data = bcdUnpack((bcdPack(data & 0x1F) + 1));
+        writeRTC(MCP79410_RTCMTH, &data, 1);
+        break;
+      case GPIO_B3_BIT:
+        readRTC(MCP79410_RTCYEAR, &data, 1);
+        data = bcdUnpack((bcdPack(data) + 1));
+        writeRTC(MCP79410_RTCYEAR, &data, 1);
+        break;
+    }
+  } else if (display == 6) {
+    switch (button) {
+      case GPIO_B3_BIT:
+        game_active = 3;
+        break;
+      case GPIO_B2_BIT:
+        game_active = 2;
+        break;
+      case GPIO_B1_BIT:
+        game_active = 1;
+        break;
+    }
   }
 }
 
 bool update_buttons()
 {
   bool button_pressed = false;
-  if (digitalRead(GPIO_B1_BIT) == LOW) {
-    if (btn_press[0] == 0) {
-      handle_button(GPIO_B1_BIT);
-      button_pressed = true;
+  for (int i = 0; i < countof(btn_map); i++) {
+    if (digitalRead(btn_map[i]) == btn_map_state[i]) {
+      if (btn_press[i] == 0) {
+        int b = btn_map[i];
+        if (btn_longpress[i]) {
+          b |= 0x80000000;
+        }
+        handle_button(b);
+        button_pressed = true;
+      }
+      if (++btn_press[i] >= 64) {
+        btn_press[i] = 0;
+        btn_longpress[i] = true;
+      }
+    } else {
+      btn_press[i] = 0;
+      btn_longpress[i] = false;
     }
-    if (++btn_press[0] >= 64) {
-      btn_press[0] = 0;
-    }
-  } else {
-    btn_press[0] = 0;
   }
-  if (digitalRead(GPIO_B2_BIT) == LOW) {
-    if (btn_press[1] == 0) {
-      handle_button(GPIO_B2_BIT);
-      button_pressed = true;
-    }
-    if (++btn_press[1] >= 64) {
-      btn_press[1] = 0;
-    }
-  } else {
-    btn_press[1] = 0;
-  }
-  if (digitalRead(GPIO_B3_BIT) == LOW) {
-    if (btn_press[2] == 0) {
-      handle_button(GPIO_B3_BIT);
-      button_pressed = true;
-    }
-    if (++btn_press[2] >= 64) {
-      btn_press[2] = 0;
-    }
-  } else {
-    btn_press[2] = 0;
-  }
-  if (digitalRead(GPIO_BOOT0_BIT) == HIGH) {
-    if (btn_press[3] == 0) {
-      handle_button(GPIO_BOOT0_BIT);
-      button_pressed = true;
-    }
-    if (++btn_press[3] >= 64) {
-      btn_press[3] = 0;
-    }
-  } else {
-    btn_press[3] = 0;
+  if (button_pressed && autotransition_timeout) {
+    autotransition_timeout = 1;
   }
   return button_pressed;
-}
-
-bool update_screen()
-{
-  int addr = (col + viewport_x) % BUFFER_SIZE;
-  enableCol(col);
-  transmitCol(frontbuffer[addr]);
-
-  if (led_power > 255) {
-    led_power = 255;
-  }
-  if (led_power < 0) {
-    led_power = 0;
-  }
-
-  int gamma = gamma_lut_8to8[led_power];
-  int time_on =  250 * gamma / 255;
-  int time_off = 250 - time_on;
-
-  if (time_on) {
-    enableRows();
-    delayMicroseconds(time_on);
-  }
-
-  disableRows();
-
-  if (time_off) {
-    delayMicroseconds(time_off);
-  }
-
-  // frame sync
-  if (++col >= MAT_COLS) {
-    col = 0;
-    frame_cnt++;
-    return true;
-  }
-
-  return false;
 }
 
 void update_lightsensor()
@@ -790,10 +703,37 @@ void update_lightsensor()
   light_sensor += (light_current - light_sensor) >> 5;
 }
 
+uint64_t wait_frame()
+{
+  static uint64_t last_frame_cnt;
+  while (1) {
+    uint64_t cur_frame_cnt = frame_cnt;
+    if (cur_frame_cnt == last_frame_cnt) {
+      asm("wfi");
+    } else {
+      last_frame_cnt = frame_cnt;
+      return frame_cnt;
+    }
+  }
+}
+
 void loop() {
-  if (!update_screen()) {
-    // display whole frame first
-    return;
+  // wait for new frame
+  uint64_t frame_cnt = wait_frame();
+
+  // load temperature & humidity each 32 frames
+  if ((frame_cnt & 0x1F) == 0) {
+      if (!readTemperatureHumidity(str_temp, str_rh)) {
+        strcpy(str_temp, "SHT40?");
+        strcpy(str_rh, "SHT40?");
+      }
+  }
+
+  if (autotransition_timeout) {
+    if (++autotransition_timeout >= 1024) {
+      autotransition_timeout = 1;
+      handle_button(GPIO_BOOT0_BIT);
+    }
   }
 
   // do this stuff once per frame
@@ -845,50 +785,47 @@ void loop() {
   }
 
   if (msg_timer && msg_text) {
+    static int msg_hold = 100;
     static int msg_shift;
     viewport_x = msg_shift >> 1;
     if (--msg_timer == 0) {
+      msg_hold = 100;
       msg_shift = 0;
       viewport_x = 0;
       clearScreen(0);
+      swapBuffers();
+      clearScreen(0);
     } else {
       drawText(1, 1, msg_text);
-      ++msg_shift;
+      if (msg_hold <= 0) {
+        ++msg_shift;
+      } else {
+        --msg_hold;
+      }
     }
     swapBuffers();
     return;
   }
 
-  // load data from RTC / sensor
-  if ((frame_cnt & 0x0F) == 0 || button_pressed) {
+  // render data to string
+  if ((frame_cnt & 0x1F) == 0 || button_pressed || clock_reload) {
+    if (!readClock(display == 0 ? str_buffer : str_rh, display)) {
+      strcpy(str_buffer, "RTC?");
+    }
+
     // do this only each 16 frames
     switch (display) {
-      case 0:
-        if (!readClock(str_buffer)) {
-          strcpy(str_buffer, "RTC?");
-        }
-        break;
-      case 1:
-        if (!readTemperature(str_buffer)) {
-          strcpy(str_buffer, "SHT40?");
-        }
-        break;
-      case 2:
-        if (!readHumidity(str_buffer)) {
-          strcpy(str_buffer, "SHT40?");
-        }
-        break;
-      case 3:
+      case 7:
         str_buffer[0] = 'L';
         str_buffer[1] = ':';
         itoa(light_sensor, str_buffer+2, 10);
         break;
-      case 4:
+      case 8:
         str_buffer[0] = 'P';
         str_buffer[1] = ':';
         itoa(led_power, str_buffer+2, 10);
         break;
-      case 5:
+      case 9:
         clock_trim = readRTC_trim();
         str_buffer[0] = 'T';
         str_buffer[1] = ':';
@@ -899,22 +836,65 @@ void loop() {
     }
   }
 
+  int textWidth = 0;
   switch(display) {
     case 0:
-      drawClock(str_buffer, false);
+      drawClock(str_buffer, clock_reload);
+      clock_reload = false;
+      break;
+    case 1:
+      textWidth = drawText(-text_scroll + 1, 1, str_rh);
+      break;
+    case 2:
+      textWidth = drawText(1, 1, str_rh);
+      break;
+    case 3:
+      textWidth = drawText(-text_scroll + 1, 1, str_rh);
+      break;
+    case 4:
+      textWidth = drawText(1, 1, str_temp);
+      break;
+    case 5:
+      textWidth = drawText(1, 1, str_rh);
+      break;
+    case 6:
+      if (game_active) {
+        if (!drawGame(frame_cnt)) {
+          game_active = 0;
+        }
+      } else {
+        drawText(1, 1, "GAME");
+      }
       break;
     default:
-      drawText(1, 1, str_buffer);
+      textWidth = drawText(1, 1, str_buffer);
       break;
   }
 
   // display transition effect
   static int transition_cnt;
   int transition_frame = transition_cnt;
+  int textDiff = textWidth - MAT_COLS;
   switch (init_sequence) {
     case SEQ::IDLE:
       if (new_display != display) {
         init_sequence = SEQ::DISPT1;
+        autoscroll = 0;
+      }
+      if (textWidth >= MAT_COLS) {
+        // autoscroll text that exceeds screen width
+        int mask = new_display != display ? 0x01 : 0x07;
+        if ((frame_cnt & mask) == 0) {
+          if (autoscroll) {
+            if (--text_scroll <= -6) {
+              autoscroll = !autoscroll;
+            }
+          } else {
+            if (++text_scroll >= textDiff + 5) {
+              autoscroll = !autoscroll;
+            }
+          }
+        }
       }
       break;
     case SEQ::DISPT2:
@@ -932,6 +912,10 @@ void loop() {
       if (transition_frame >= MAT_COLS) {
         xchg(display, new_display);
         init_sequence = SEQ::DISPT2;
+        text_scroll = 0;
+        if (display == 0) {
+          clock_reload = true;
+        }
       }
       break;
   }

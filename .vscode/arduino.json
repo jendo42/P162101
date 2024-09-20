@@ -1,0 +1,6 @@
+{
+    "configuration": "pnum=GENERIC_F042K6TX,upload_method=dfuMethod,xserial=disabled,usb=none,opt=oslto,dbg=none,rtlib=nano",
+    "board": "STMicroelectronics:stm32:GenF0",
+    "sketch": "P162101.ino",
+    "port": "COM1"
+}

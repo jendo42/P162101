@@ -1,3 +1,5 @@
+#pragma once
+
 const uint8_t font3x5_2_bitmap[] = {
   // ' '
   0x17,  // '!'

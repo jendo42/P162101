@@ -24,3 +24,12 @@
 #define MCP79410_CONTROL_CRSTRIM 2
 #define MCP79410_CONTROL_SQWFS1 1
 #define MCP79410_CONTROL_SQWFS0 0
+
+#define STATUS_EBATTERY   1
+#define STATUS_ERTC       2
+
+size_t readRTC(uint8_t address, uint8_t *buffer, size_t size);
+uint8_t writeRTC(uint8_t address, uint8_t *buffer, size_t size);
+int readRTC_trim();
+void writeRTC_trim(int trim);
+void trimRTC(int temp);
