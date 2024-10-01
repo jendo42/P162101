@@ -1,20 +1,22 @@
-# Hodiny P162101
-Vývojová doska P162101 je otvorený vývojový projekt navrhnutý firmou [JM Systems, s.r.o.](jmsystems.sk), ktorý má demonštrovať možnosti a podporiť vzdelávanie v oblasti vývoja a výroby elektronických zariadení.
+[![en](https://img.shields.io/badge/lang-en-red.svg)](README.en.md)
+[![sk](https://img.shields.io/badge/lang-sk-green.svg)](README.md)
 
-Hodiny sú samostatný osadený plošný spoj navrhnutý tak, aby sa dal postaviť na stôl alebo poličku.
+# Hodiny P162101
+Vývojová doska P162101 je otvorený vývojový projekt navrhnutý firmou [JM Systems, s.r.o.](https://jmsystems.sk), ktorý má demonštrovať možnosti a podporiť vzdelávanie v oblasti vývoja a výroby elektronických zariadení.
 
 ![Hodiny](docs/top_silk_r1.1.png)
 
-Schéma zapojenia dosky a zdrojové kódy ukážkového softvéru nájdete práve v tomto repozitári.
+Doska P162101 je samostatný osadený plošný spoj navrhnutý tak, aby sa dal postaviť na stôl alebo poličku. Dominanta dosky je 29x7 bodový LED display na ktorom možno zobraziť rôzne praktické údaje ako čas, teplotu, vlhkosť a iné.
 
-Softvér je napísaný vo vývojovom prostredí Arduino s rozšírením pre podporu mikrokontrolérov STM32.
+[Schéma zapojenia dosky](docs/schematic_r1.1.pdf) a [zdrojové kódy](P162101.ino) ukážkového softvéru nájdete práve v tomto repozitári. Softvér je napísaný vo vývojovom prostredí Arduino s rozšírením pre podporu mikrokontrolérov STM32.
 
-### Technické parametre
+## Technické parametre
  - MCU: [STM32F042K6T6](https://www.st.com/en/microcontrollers-microprocessors/stm32f042k6.html)
    - ARM 32-bit Cortex-M0
    - max. 48MHz
    - 32 KB flash pamäť
    - 6 KB SRAM pamäť
+   - USB 2.0 Full Speed Controller
    - USB DFU Bootloader
  - LED displej
    - rozmer 29x7 bodov
@@ -28,10 +30,10 @@ Softvér je napísaný vo vývojovom prostredí Arduino s rozšírením pre podp
  - Možnosť doosadiť senzor CO2 [SCD40](https://sensirion.com/products/catalog/SCD40)
  - Napájanie cez USB
 
-### Ukážkový program
+## Ukážkový program
 Každé zariadenie vychádza z výroby s nahratým ukážkovým programom. Ukážkový program obsahuje 7 hlavných obrazoviek a skrytý testovací mód, ktorý sa používa na oživenie výrobku počas výroby. Tento program tiež obsahuje kalibráciu RTC a teplotnú kompenzáciu.
 
-*POZNÁMKA: Teplotná kompenzácia funguje len v prípade že zariadnie je napájané z USB.*
+*POZNÁMKA: Teplotná kompenzácia hodinového kryštálu funguje len v prípade že zariadnie je napájané z USB.*
 
 1. Hodiny so sekundami
 2. Deň v týždni
@@ -44,7 +46,7 @@ Každé zariadenie vychádza z výroby s nahratým ukážkovým programom. Uká�
 __Stlačením__ tlačidla **BOOT0** zmeníte obrazovku.
 __Podržaním__ tlačidla **BOOT0** vypnete/zapnete automatické zmeny obrazovky.
 
-#### Nastavenie hodín a dátumu
+### Nastavenie hodín a dátumu
 Dátum a hodiny sa nastavujú tak, že na obrazovke hodín alebo dátumu použijete tlačidlá B1, B2, B3 na strane.
 
 |Tlačidlo|Obrazovka hodín|Obrazovka dátumu|
@@ -53,7 +55,7 @@ Dátum a hodiny sa nastavujú tak, že na obrazovke hodín alebo dátumu použij
 |B2      | minúty + 1   | mesiac + 1 |
 |B3      | reset sekúnd | rok + 1    |
 
-#### Minihra
+### Minihra
 Ste pilot v rakete a Vaším cielom je zostreliť čo najviac padajúcich asteroidov. Čím viac asteroidov zničíte, tým sa zvyšuje obtiažnosť hry. V prípade že asteroid narazí do rakety hra končí.
 
 Pre spustenie minihry na obrazovke "GAME" stlačte ľubovolné tlačidlo B1/B2/B3. Ovládanie:
@@ -64,3 +66,9 @@ Pre spustenie minihry na obrazovke "GAME" stlačte ľubovolné tlačidlo B1/B2/B
 |B2      | streľba                |
 |B3      | pohyb doľava / dore    |
 |BOOT0   | ukončenie hry          |
+
+## Zostavenie ukážkového programu
+TBD
+
+## Možnosť podielania sa na projekte
+TBD
