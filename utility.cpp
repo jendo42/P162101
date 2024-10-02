@@ -96,6 +96,27 @@ int dayOfWeek(uint8_t y, uint8_t m, uint8_t d)
   return w;
 }
 
+int getMonthDays(uint8_t month, uint8_t year)
+{
+  static const uint8_t month_days[] = {
+    31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+  };
+
+  if (year > 99) {
+    return 0;
+  }
+
+  int y = 2000 + year;
+  int m = (month - 1) % 12;
+  int d = month_days[m];
+  if ((y & 3) == 0 && m == 1) {
+    // leap year
+    ++d;
+  }
+
+  return d;
+}
+
 int getRand()
 {
   int val = (rand_last * 1103515245) + 12345;

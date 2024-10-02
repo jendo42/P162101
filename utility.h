@@ -46,6 +46,7 @@ int clock_error(int T);
 
 // calculates precise day of week
 int dayOfWeek(uint8_t year, uint8_t month, uint8_t day);
+int getMonthDays(uint8_t month, uint8_t year);
 
 // lightweight linear pseudo-RNG
 int getRand();

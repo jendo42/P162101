@@ -570,6 +570,7 @@ void handle_button(int button)
   button &= 0xFFFF;
 
   uint8_t data;
+  uint8_t data2[3];
   bool tm = test_mode();
   int max_display = get_screens();
   if (game_active) {
@@ -638,13 +639,17 @@ void handle_button(int button)
   } else if (display == 2) {
     switch (button) {
       case GPIO_B1_BIT:
-        readRTC(MCP79410_RTCDATE, &data, 1);
-        data = bcdUnpack((bcdPack(data) + 1));
+        readRTC(MCP79410_RTCDATE, data2, 3);
+        data = bcdPack(data2[0]) - 1;
+        data = (data + 1) % getMonthDays(bcdPack(data2[1] & 0x1F), bcdPack(data2[2]));
+        data = bcdUnpack(data + 1);
         writeRTC(MCP79410_RTCDATE, &data, 1);
         break;
       case GPIO_B2_BIT:
         readRTC(MCP79410_RTCMTH, &data, 1);
-        data = bcdUnpack((bcdPack(data & 0x1F) + 1));
+        data = bcdPack(data & 0x1F) - 1;
+        data = (data + 1) % 12;
+        data = bcdUnpack(data + 1);
         writeRTC(MCP79410_RTCMTH, &data, 1);
         break;
       case GPIO_B3_BIT:
