@@ -22,7 +22,7 @@ Doska P162101 je samostatný osadený plošný spoj navrhnutý tak, aby sa dal p
    - rozmer 29x7 bodov
    - multiplexné zapojenie
      - 2x 74HC154 (stĺpce)
-	 - 1x 74HC595 (riadky)
+     - 1x 74HC595 (riadky)
  - 4 nezávislé tlačidlá, tlačidlo RESET
  - Senzor osvetlenia
  - Kombinovaný RTC čip s EEPROM pamäťou [MCP79410](https://www.microchip.com/en-us/product/mcp79410)
