@@ -33,10 +33,16 @@ static inline uint32_t rotr32(uint32_t n, unsigned int c)
   return (n>>c) | (n<<( (-c)&mask )); 
 }
 
+uint8_t crc8itu_update(uint8_t val, uint8_t data);
+uint8_t crc8itu(const void * data, size_t size);
+uint8_t checksum(const void * data, size_t size);
+uint8_t decode6to8(uint8_t code);
+
 uint8_t bcdPack(uint8_t x);
 uint8_t bcdUnpack(uint8_t x);
 void nibble2hex(uint8_t value, char *str);
 void byte2hex(uint8_t value, char *str);
+void word2hex(uint16_t value, char *str);
 
 // WARNING: this does not terminate string with '\0'
 void value2str(int value, char *str);

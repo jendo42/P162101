@@ -10,6 +10,7 @@
 #include "utility.h"
 #include "names.h"
 #include "game.h"
+#include "light_receiver.h"
 
 #define STATUS_OK         0
 #define STATUS_TEST       8
@@ -363,6 +364,9 @@ void update_brightness(int light_min, int light_max, int power_min, int power_ma
 
 void display_begin()
 {
+  if (test_mode()) {
+    light_receiver(light_sensor);
+  }
   int addr = (col + viewport_x) % BUFFER_SIZE;
   enableCol(col);
   transmitCol(frontbuffer[addr]);
@@ -883,6 +887,10 @@ void loop() {
   // here redraw screen in memory
   // execute this code every 2 frames
   clearScreen(0);
+
+  if (light_receiver_status() & 1) {
+    xorPixel(0, 0);
+  }
 
   if (init_sequence < SEQ::IDLE) {
     // intro animation sequence
