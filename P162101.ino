@@ -83,6 +83,10 @@ extern "C" void HardFault_Handler(void)
 
 void showMessage(const char *text, uint32_t frames)
 {
+  if (text && !text[0]) {
+    text = NULL;
+    frames = 0;
+  }
   msg_text = text;
   msg_timer = frames;
 }
