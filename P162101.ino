@@ -469,6 +469,14 @@ void setup()
     uint8_t seed[4];
     readRTC(MCP79410_RTCSEC, seed, sizeof(seed));
     seedRand(*(int *)&seed[0]);
+
+    // check if device was factory setup
+    readEEPROM(0x00, seed, 4);
+    if (*(uint32_t *)seed != 0xFAC7BABE) {
+      *(uint32_t *)seed = 0xFAC7BABE;
+      writeEEPROM(0x00, seed, 4);
+      init_status |= STATUS_TEST;
+    }
   } else {
     init_status |= STATUS_ERTC;
   }
@@ -506,7 +514,70 @@ void setup()
   }
 
   // do not allow to continue if buttons are stuck
-  while (digitalRead(GPIO_B1_BIT) == LOW || digitalRead(GPIO_B2_BIT) == LOW || digitalRead(GPIO_B3_BIT) == LOW || digitalRead(GPIO_BOOT0_BIT) == HIGH);
+  if (init_status & STATUS_TEST) {
+    int test_state = 0;
+    while (test_state < 9) {
+      int frame = wait_frame();
+      clearScreen(0);
+      switch (test_state) {
+        case 0:
+          drawText(1, 1, "TEST!");
+          if (frame >= 300) {
+            test_state = 1;
+          }
+          break;
+        case 1:
+          drawText(1, 1, "PRE B1");
+          if (digitalRead(GPIO_B1_BIT) == LOW) {
+            test_state = 2;
+          }
+          break;
+        case 2:
+          drawText(1, 1, "REL B1");
+          if (digitalRead(GPIO_B1_BIT) == HIGH) {
+            test_state = 3;
+          }
+          break;
+        case 3:
+          drawText(1, 1, "PRE B2");
+          if (digitalRead(GPIO_B2_BIT) == LOW) {
+            test_state = 4;
+          }
+          break;
+        case 4:
+          drawText(1, 1, "REL B2");
+          if (digitalRead(GPIO_B2_BIT) == HIGH) {
+            test_state = 5;
+          }
+          break;
+        case 5:
+          drawText(1, 1, "PRE B3");
+          if (digitalRead(GPIO_B3_BIT) == LOW) {
+            test_state = 6;
+          }
+          break;
+        case 6:
+          drawText(1, 1, "REL B3");
+          if (digitalRead(GPIO_B3_BIT) == HIGH) {
+            test_state = 7;
+          }
+          break;
+        case 7:
+          drawText(1, 1, "P BOOT0");
+          if (digitalRead(GPIO_BOOT0_BIT) == HIGH) {
+            test_state = 8;
+          }
+          break;
+        case 8:
+          drawText(1, 1, "R BOOT0");
+          if (digitalRead(GPIO_BOOT0_BIT) == LOW) {
+            test_state = 9;
+          }
+          break;
+      }
+      swapBuffers();
+    }
+  }
 
 }
 
