@@ -489,7 +489,9 @@ void setup()
   // show error
   if (init_status != STATUS_OK) {
     if (init_status & STATUS_TEST) {
-      strcat(str_buffer, " TEST! ");
+      display = 7;
+      new_display = 7;
+      autotransition_timeout = 0;
     }
     if (init_status & STATUS_EBATTERY) {
       strcat(str_buffer, " BAT! ");
