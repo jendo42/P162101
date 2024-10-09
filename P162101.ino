@@ -487,6 +487,12 @@ void setup()
       display = seed[0];
       new_display = seed[0];
     }
+
+    // load autotransition setting from RTC RAM
+    readRTC(0x20, seed, 2);
+    if ((seed[0] ^ seed[1]) == 0xFF) {
+      autotransition_timeout = seed[0];
+    }
   } else {
     init_status |= STATUS_ERTC;
   }
@@ -665,6 +671,12 @@ int get_screens()
   return screens;
 }
 
+void writeRTC_auto(bool b)
+{
+  uint8_t dat[] = { b, ~b };
+  writeRTC(0x20, dat, sizeof(dat));
+}
+
 void writeRTC_display(uint8_t b)
 {
   uint8_t dat[] = { b, ~b };
@@ -691,6 +703,7 @@ void handle_button(int button)
   if (button == GPIO_BOOT0_BIT) {
     if (longpress) {
       autotransition_timeout = !autotransition_timeout;
+      writeRTC_auto(autotransition_timeout);
       if (autotransition_timeout) {
         showMessage("AUTO  on", 128 * 4);
       } else {
