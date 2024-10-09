@@ -35,7 +35,7 @@ static char str_rh[64];
 static int light_sensor = 0;
 static int led_power = 255;
 static bool clock_reload = false;
-static bool autoscroll = 0;
+static bool autoscroll = false;
 static int text_scroll = 0;
 
 static int btn_press[4];
@@ -883,7 +883,7 @@ void loop() {
     case SEQ::IDLE:
       if (new_display != display) {
         init_sequence = SEQ::DISPT1;
-        autoscroll = 0;
+        autoscroll = false;
       }
       if (textWidth >= MAT_COLS) {
         // autoscroll text that exceeds screen width
