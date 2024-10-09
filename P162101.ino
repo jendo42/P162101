@@ -453,6 +453,7 @@ void setup()
       reg = 0x80;
       writeRTC(MCP79410_RTCSEC, &reg, 1);
       writeRTC(MCP79410_RTCHOUR, &reg, 1);
+      trimRTC(250);
       init_status |= STATUS_EBATTERY;
     }
 
@@ -463,9 +464,6 @@ void setup()
       reg |= bit(MCP79410_CONTROL_SQWFS1);
     }
     writeRTC(MCP79410_CONTROL, &reg, 1);
-
-    // reset trim to default
-    trimRTC(26);
 
     // seed RNG
     uint8_t seed[4];
