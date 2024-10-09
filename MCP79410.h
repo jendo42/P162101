@@ -1,6 +1,7 @@
 #pragma once
 
 #define MCP79410_ADDR_RTC 0x6F
+#define MCP79410_ADDR_EEPROM 0x57
 
  #define MCP79410_RTCSEC 0x00
  #define MCP79410_RTCMIN 0x01
@@ -33,3 +34,6 @@ uint8_t writeRTC(uint8_t address, uint8_t *buffer, size_t size);
 int readRTC_trim();
 void writeRTC_trim(int trim);
 void trimRTC(int temp);
+size_t readEEPROM(uint8_t address, uint8_t *buffer, size_t size);
+// writes only 1 byte or whole page (8 bytes)
+uint8_t writeEEPROM(uint8_t address, uint8_t *buffer, size_t size);

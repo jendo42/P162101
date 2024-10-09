@@ -58,3 +58,27 @@ void trimRTC(int temp)
   int temp_error = clock_error(temp); 
   writeRTC_trim(base_error - temp_error);
 }
+
+size_t readEEPROM(uint8_t address, uint8_t *buffer, size_t size)
+{
+  if (init_status & STATUS_ERTC) {
+    return 0;
+  }
+  Wire.beginTransmission(MCP79410_ADDR_EEPROM);
+  Wire.write(address);
+  Wire.endTransmission(false);
+  Wire.requestFrom(MCP79410_ADDR_EEPROM, size);
+  return Wire.readBytes(buffer, size);
+}
+
+// writes only 1 byte or whole page (8 bytes)
+uint8_t writeEEPROM(uint8_t address, uint8_t *buffer, size_t size)
+{
+  if (init_status & STATUS_ERTC) {
+    return 0;
+  }
+  Wire.beginTransmission(MCP79410_ADDR_EEPROM);
+  Wire.write(address);
+  Wire.write(buffer, size);
+  return Wire.endTransmission();
+}
