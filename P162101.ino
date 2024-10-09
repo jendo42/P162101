@@ -686,7 +686,12 @@ void writeRTC_display(uint8_t b)
 void handle_button(int button)
 {
   bool longpress = button & 0x80000000;
+  bool released = button & 0x40000000;
   button &= 0xFFFF;
+
+  if (released) {
+    return;
+  }
 
   uint8_t data;
   uint8_t data2[3];
@@ -798,9 +803,9 @@ bool update_buttons()
 {
   bool button_pressed = false;
   for (int i = 0; i < countof(btn_map); i++) {
-    if (digitalRead(btn_map[i]) == btn_map_state[i]) {
+    int b = btn_map[i];
+    if (digitalRead(b) == btn_map_state[i]) {
       if (btn_press[i] == 0) {
-        int b = btn_map[i];
         if (btn_longpress[i]) {
           b |= 0x80000000;
         }
@@ -812,6 +817,9 @@ bool update_buttons()
         btn_longpress[i] = true;
       }
     } else {
+      if (btn_press[i] || btn_longpress[i]) {
+        handle_button(b | 0x40000000);
+      }
       btn_press[i] = 0;
       btn_longpress[i] = false;
     }
