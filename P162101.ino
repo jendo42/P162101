@@ -477,6 +477,16 @@ void setup()
       writeEEPROM(0x00, seed, 4);
       init_status |= STATUS_TEST;
     }
+
+    // load last display
+    readRTC(0x22, seed, 2);
+    if ((seed[0] ^ seed[1]) == 0xFF) {
+      if (seed[0] >= get_screens()) {
+        seed[0] = 0;
+      }
+      display = seed[0];
+      new_display = seed[0];
+    }
   } else {
     init_status |= STATUS_ERTC;
   }
@@ -655,6 +665,12 @@ int get_screens()
   return screens;
 }
 
+void writeRTC_display(uint8_t b)
+{
+  uint8_t dat[] = { b, ~b };
+  writeRTC(0x22, dat, sizeof(dat));
+}
+
 void handle_button(int button)
 {
   bool longpress = button & 0x80000000;
@@ -686,6 +702,7 @@ void handle_button(int button)
       if (++new_display >= max_display) {
         new_display = 0;
       }
+      writeRTC_display(new_display);
     }
   }
   if (tm) {
