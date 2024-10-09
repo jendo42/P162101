@@ -324,6 +324,39 @@ bool test_mode()
   return init_status & STATUS_TEST;
 }
 
+void update_lightsensor()
+{
+  // moving average (64 frames delay)
+  int light_current = analogRead(GPIO_LIGHT_SENSE_BIT);
+  light_sensor += (light_current - light_sensor) >> 6;
+}
+
+void update_brightness(int light_min, int light_max, int power_min, int power_max)
+{
+  int r = light_max - light_min;
+  int i = light_sensor - light_min;
+  if (i > r) {
+    i = r;
+  }
+  if (i < 0) {
+    i = 0;
+  }
+
+  int r2 = power_max - power_min;
+  led_power = power_min + (r2 * i / r);
+
+  // clamp power
+  if (led_power > 255) {
+    led_power = 255;
+  }
+  if (led_power < 0) {
+    led_power = 0;
+  }
+
+  int gamma = gamma_lut_8to8[led_power];
+  display_timer.setCaptureCompare(1, gamma * 100 / 255, PERCENT_COMPARE_FORMAT);
+}
+
 void display_begin()
 {
   int addr = (col + viewport_x) % BUFFER_SIZE;
@@ -341,6 +374,14 @@ void display_end()
   if (++col >= MAT_COLS) {
     col = 0;
     ++frame_cnt;
+    update_lightsensor();
+    // allow updating brightness after 16 frames,
+    // when the value stabilize
+    if (frame_cnt >= 16) {
+      // update brightness
+      // 25..500 linear
+      update_brightness(25, 500, 64, 255);
+    }
   }
 }
 
@@ -462,32 +503,7 @@ void setup()
 
   // do not allow to continue if buttons are stuck
   while (digitalRead(GPIO_B1_BIT) == LOW || digitalRead(GPIO_B2_BIT) == LOW || digitalRead(GPIO_B3_BIT) == LOW || digitalRead(GPIO_BOOT0_BIT) == HIGH);
-}
 
-void update_brightness(int light_min, int light_max, int power_min, int power_max)
-{
-  int r = light_max - light_min;
-  int i = light_sensor - light_min;
-  if (i > r) {
-    i = r;
-  }
-  if (i < 0) {
-    i = 0;
-  }
-
-  int r2 = power_max - power_min;
-  led_power = power_min + (r2 * i / r);
-
-  // clamp power
-  if (led_power > 255) {
-    led_power = 255;
-  }
-  if (led_power < 0) {
-    led_power = 0;
-  }
-
-  int gamma = gamma_lut_8to8[led_power];
-  display_timer.setCaptureCompare(1, gamma * 100 / 255, PERCENT_COMPARE_FORMAT);
 }
 
 void drawClock(char *str, bool reset)
@@ -701,13 +717,6 @@ bool update_buttons()
   return button_pressed;
 }
 
-void update_lightsensor()
-{
-  // moving average (64 frames delay)
-  int light_current = analogRead(GPIO_LIGHT_SENSE_BIT);
-  light_sensor += (light_current - light_sensor) >> 5;
-}
-
 uint64_t wait_frame()
 {
   static uint64_t last_frame_cnt;
@@ -741,21 +750,11 @@ void loop() {
     }
   }
 
-  // do this stuff once per frame
-  update_lightsensor();
-
-  // allow updating brightness after 16 frames,
-  // when the value stabilize
-  if (frame_cnt >= 16) {
-    // update brightness
-    // 25..500 linear
-    update_brightness(25, 500, 64, 255);
-    if (init_sequence == SEQ::WARMUP) {
+  if (init_sequence == SEQ::WARMUP) {
+    if (frame_cnt > 16) {
+      // after 16 frames show intro animation
       init_sequence = SEQ::INTRO_S0;
     }
-  }
-
-  if (init_sequence == SEQ::WARMUP) {
     // dont do anything else when in warm-up state
     return;
   }
