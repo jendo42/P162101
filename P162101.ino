@@ -815,32 +815,32 @@ void loop() {
     return;
   }
 
-  // render data to string
+  switch (display) {
+    case 7:
+      str_buffer[0] = 'L';
+      str_buffer[1] = ':';
+      itoa(light_sensor, str_buffer+2, 10);
+      strupr(str_buffer);
+      break;
+    case 8:
+      str_buffer[0] = 'P';
+      str_buffer[1] = ':';
+      itoa(led_power, str_buffer+2, 10);
+      break;
+    case 9:
+      clock_trim = readRTC_trim();
+      str_buffer[0] = 'T';
+      str_buffer[1] = ':';
+      itoa(clock_trim, str_buffer+2, 10);
+      break;
+    default:
+      break;
+  }
+
+  // update RTC only each 32 frames
   if ((frame_cnt & 0x1F) == 0 || button_pressed || clock_reload) {
     if (!readClock(display == 0 ? str_buffer : str_rh, display)) {
       strcpy(str_buffer, "RTC?");
-    }
-
-    // do this only each 16 frames
-    switch (display) {
-      case 7:
-        str_buffer[0] = 'L';
-        str_buffer[1] = ':';
-        itoa(light_sensor, str_buffer+2, 10);
-        break;
-      case 8:
-        str_buffer[0] = 'P';
-        str_buffer[1] = ':';
-        itoa(led_power, str_buffer+2, 10);
-        break;
-      case 9:
-        clock_trim = readRTC_trim();
-        str_buffer[0] = 'T';
-        str_buffer[1] = ':';
-        itoa(clock_trim, str_buffer+2, 10);
-        break;
-      default:
-        break;
     }
   }
 
