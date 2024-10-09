@@ -16,7 +16,11 @@ uint8_t bcdUnpack(uint8_t x)
 void nibble2hex(uint8_t value, char *str)
 {
   uint8_t c = value & 0xF;
-  c += (c >= 10) ? 'A' : '0';
+  if (c >= 10) {
+    c += 'A' - 10;
+  } else {
+    c += '0';
+  }
   str[0] = c;
   str[1] = 0;
 }
