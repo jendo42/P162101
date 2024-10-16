@@ -477,9 +477,10 @@ void setup()
     // check if device was factory setup
     readEEPROM(0x00, seed, 4);
     if (*(uint32_t *)seed != 0xFAC7BABE) {
-      *(uint32_t *)seed = 0xFAC7BABE;
-      writeEEPROM(0x00, seed, 4);
       init_status |= STATUS_TEST;
+    } else if (init_status & STATUS_TEST) {
+      *(uint32_t *)seed = 0xFFFFFFFF;
+      writeEEPROM(0x00, seed, 4);
     }
 
     // load last display
@@ -597,6 +598,10 @@ void setup()
       }
       swapBuffers();
     }
+
+    // store flag that factory test was done
+    uint32_t sign = 0xFAC7BABE;
+    writeEEPROM(0x00, (uint8_t *)&sign, 4);
   }
 
 }
