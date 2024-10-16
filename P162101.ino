@@ -477,8 +477,6 @@ void setup()
     // check if device was factory setup
     readEEPROM(0x00, seed, 4);
     if (*(uint32_t *)seed != 0xFAC7BABE) {
-      *(uint32_t *)seed = 0xFAC7BABE;
-      writeEEPROM(0x00, seed, 4);
       init_status |= STATUS_TEST;
     }
 
@@ -535,6 +533,8 @@ void setup()
 
   // do not allow to continue if buttons are stuck
   if (init_status & STATUS_TEST) {
+    uint32_t sign = 0xFFFFFFFF;
+    writeEEPROM(0x00, &sign, 4);
     int test_state = 0;
     while (test_state < 9) {
       int frame = wait_frame();
@@ -597,6 +597,10 @@ void setup()
       }
       swapBuffers();
     }
+
+    // store flag that factory test was done
+    sign = 0xFAC7BABE;
+    writeEEPROM(0x00, &sign, 4);
   }
 
 }
