@@ -505,7 +505,7 @@ void setup()
 
   // init clock calibration timer
   display_timer.setup(TIM14);
-  display_timer.setPWM(1, NC, MAT_COLS * 100, 1, &display_begin, &display_end);
+  display_timer.setPWM(1, NC, MAT_COLS * 101, 1, &display_begin, &display_end);
   display_timer.resume();
 
   // initialize SHT40
@@ -889,7 +889,7 @@ void loop() {
   }
 
   if (autotransition_timeout) {
-    if (++autotransition_timeout >= 1024) {
+    if (++autotransition_timeout >= 366) {
       autotransition_timeout = 1;
       handle_button(GPIO_BOOT0_BIT);
     }
