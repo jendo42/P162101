@@ -54,6 +54,7 @@ const int btn_map_state[] = {
   HIGH,
 };
 
+static int first_display = 0;
 static int display;
 static int new_display;
 static int clock_trim;
@@ -213,7 +214,7 @@ bool readClock(char *str, int type)
   int day;
   if (readRTC(MCP79410_RTCSEC, reg, sizeof(reg))) {
     switch (type) {
-      case 0:
+      case -1:
         str[0] = ((reg[2] >> 4) & 0x03) + '0'; // h
         str[1] = ((reg[2] >> 0) & 0x0F) + '0';
         str[2] = ':';
@@ -224,12 +225,12 @@ bool readClock(char *str, int type)
         str[7] = ((reg[0] >> 0) & 0x0F) + '0';
         str[8] = 0;
         break;
-      case 1:
+      case 0:
         day = dayOfWeek(bcdPack(reg[6]), bcdPack(reg[5] & 0x1F), bcdPack(reg[4] & 0x3F)) - 1;
         strcpy(str, weekday_names_sk[day]);
         strupr(str);
         break;
-      case 2:
+      case 1:
         str[0] = ((reg[4] >> 4) & 0x03) + '0'; // d
         str[1] = ((reg[4] >> 0) & 0x0F) + '0';
         str[2] = '.';
@@ -240,7 +241,7 @@ bool readClock(char *str, int type)
         str[7] = ((reg[6] >> 0) & 0x0F) + '0';
         str[8] = 0;
         break;
-      case 3:
+      case 2:
         strcpy(str, calendar_names_sk[bcdPack(reg[5] & 0x1F) - 1][bcdPack(reg[4] & 0x3F) - 1]);
         strupr(str);
         break;
@@ -537,6 +538,7 @@ void setup()
   // do not allow to continue if buttons are stuck
   if (init_status & STATUS_TEST) {
     int test_state = 0;
+    first_display = -1;
     while (test_state < 9) {
       int frame = wait_frame();
       clearScreen(0);
@@ -668,7 +670,7 @@ void drawClock(char *str, bool reset)
   }
 }
 
-#define SCREENS_BASE 7
+#define SCREENS_BASE 6
 #define SCREENS_TEST 3
 
 int get_screens()
@@ -676,8 +678,21 @@ int get_screens()
   int screens = SCREENS_BASE;
   if (test_mode()) {
     screens += SCREENS_TEST;
+  } else {
+    screens <<= 1;
   }
   return screens;
+}
+
+int get_disp()
+{
+  int disp;
+  if (test_mode()) {
+    disp = display;
+  } else {
+    disp = ~display & 1 ? -1 : display >> 1;
+  }
+  return disp;
 }
 
 void writeRTC_auto(bool b)
@@ -705,6 +720,7 @@ void handle_button(int button)
   uint8_t data;
   uint8_t data2[3];
   bool tm = test_mode();
+  int disp = get_disp();
   int max_display = get_screens();
   if (game_active) {
     if (button == GPIO_BOOT0_BIT) {
@@ -727,7 +743,7 @@ void handle_button(int button)
       msg_timer = 1;
     } else if (init_sequence == SEQ::IDLE) {
       if (++new_display >= max_display) {
-        new_display = 0;
+        new_display = first_display;
       }
       writeRTC_display(new_display);
     }
@@ -753,7 +769,9 @@ void handle_button(int button)
         writeRTC_trim(clock_trim);
         break;
     }
-  } else if (display == 0) {
+  } else switch (disp) {
+  case -1:
+    // clock screen buttons
     switch (button) {
       case GPIO_B3_BIT:
         readRTC(MCP79410_RTCSEC, &data, 1);
@@ -771,7 +789,9 @@ void handle_button(int button)
         writeRTC(MCP79410_RTCHOUR, &data, 1);
         break;
     }
-  } else if (display == 2) {
+    break;
+  case 1:
+    // calendar screen buttons
     switch (button) {
       case GPIO_B1_BIT:
         readRTC(MCP79410_RTCDATE, data2, 3);
@@ -793,7 +813,9 @@ void handle_button(int button)
         writeRTC(MCP79410_RTCYEAR, &data, 1);
         break;
     }
-  } else if (display == 6) {
+    break;
+  case 5:
+    // game screen buttons
     switch (button) {
       case GPIO_B3_BIT:
         game_active = 3;
@@ -805,6 +827,7 @@ void handle_button(int button)
         game_active = 1;
         break;
     }
+    break;
   }
 }
 
@@ -937,19 +960,20 @@ void loop() {
     return;
   }
 
-  switch (display) {
-    case 7:
+  int disp = get_disp();
+  switch (disp) {
+    case 6:
       str_buffer[0] = 'L';
       str_buffer[1] = ':';
       itoa(light_sensor, str_buffer+2, 10);
       strupr(str_buffer);
       break;
-    case 8:
+    case 7:
       str_buffer[0] = 'P';
       str_buffer[1] = ':';
       itoa(led_power, str_buffer+2, 10);
       break;
-    case 9:
+    case 8:
       clock_trim = readRTC_trim();
       str_buffer[0] = 'T';
       str_buffer[1] = ':';
@@ -961,33 +985,33 @@ void loop() {
 
   // update RTC only each 32 frames
   if ((frame_cnt & 0x1F) == 0 || button_pressed || clock_reload) {
-    if (!readClock(display == 0 ? str_buffer : str_rh, display)) {
+    if (!readClock(disp == -1 ? str_buffer : str_rh, disp)) {
       strcpy(str_buffer, "RTC?");
     }
   }
 
   int textWidth = 0;
-  switch(display) {
-    case 0:
+  switch(disp) {
+    case -1:
       drawClock(str_buffer, clock_reload);
       clock_reload = false;
       break;
-    case 1:
+    case 0:
       textWidth = drawText(-text_scroll + 1, 1, str_rh);
+      break;
+    case 1:
+      textWidth = drawText(1, 1, str_rh);
       break;
     case 2:
-      textWidth = drawText(1, 1, str_rh);
-      break;
-    case 3:
       textWidth = drawText(-text_scroll + 1, 1, str_rh);
       break;
-    case 4:
+    case 3:
       textWidth = drawText(1, 1, str_temp);
       break;
-    case 5:
+    case 4:
       textWidth = drawText(1, 1, str_rh);
       break;
-    case 6:
+    case 5:
       if (game_active) {
         if (!drawGame(frame_cnt)) {
           game_active = 0;
@@ -1043,7 +1067,7 @@ void loop() {
         xchg(display, new_display);
         init_sequence = SEQ::DISPT2;
         text_scroll = 0;
-        if (display == 0) {
+        if (~display & 1) {
           clock_reload = true;
         }
       }
