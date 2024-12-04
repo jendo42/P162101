@@ -1,4 +1,4 @@
-[![en](https://img.shields.io/badge/lang-en-red.svg)](README.en.md)
+[![en](https://img.shields.io/badge/lang-en-green.svg)](README.en.md)
 [![sk](https://img.shields.io/badge/lang-sk-green.svg)](README.md)
 
 # Hodiny P162101

@@ -1,5 +1,5 @@
 [![en](https://img.shields.io/badge/lang-en-green.svg)](README.en.md)
-[![sk](https://img.shields.io/badge/lang-sk-red.svg)](README.md)
+[![sk](https://img.shields.io/badge/lang-sk-green.svg)](README.md)
 
 # Clock P162101
 The P162101 development board is an open source tool, that opens up a world of endless possibilities in the field of the electronic device development. It was designed by the [JM Systems, s.r.o.](https://jmsystems.sk) as an ideal platform for everyone – from the beginners to the professionals and educational institutions. The P162101 board offers cutting-edge technology in the form of unique LED screen, that can display useful informations, whether you use it for fun or for practical applications.
