@@ -72,6 +72,7 @@ static uint32_t viewport_x = 0;
 static HardwareTimer display_timer;
 static DST dst_state = DST::UNKNOWN;
 static bool dst_fts = false;
+static bool dst_factory_force = false;
 
 extern "C" void HardFault_Handler(void)
 {
@@ -260,6 +261,13 @@ bool readClock(char *str, int type)
           newDst = DST::ON;
         } else {
           dst_state = newDst;
+        }
+        if (dst_factory_force) {
+          // force decrement hour, factory override
+          dst_state = DST::ON;
+          dst_factory_force = false;
+          uint32_t sign = 0xFAC7BABE;
+          writeEEPROM(0x04, (uint8_t *)&sign, 4);
         }
         break;
       case DST::OFF:
@@ -566,6 +574,13 @@ void setup()
     } else if (init_status & STATUS_TEST) {
       *(uint32_t *)seed = 0xFFFFFFFF;
       writeEEPROM(0x00, seed, 4);
+    }
+
+    *(uint32_t *)seed = 0;
+    readEEPROM(0x04, seed, 4);
+    if (*(uint32_t *)seed != 0xFAC7BABE) {
+      // force add DST
+      dst_factory_force = true;
     }
 
     // load DST state
@@ -1017,6 +1032,7 @@ void loop() {
   clearScreen(0);
 
   if (light_receiver_status() & 1) {
+    dst_fts = false;
     xorPixel(0, 0);
   }
 
