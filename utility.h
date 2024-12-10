@@ -5,6 +5,13 @@
 #define countof(x) (sizeof(x) / sizeof(*x))
 #define LEAP_YEAR(Y)     ( (Y>0) && !(Y%4) && ( (Y%100) || !(Y%400) ))     // from time-lib
 
+enum class DST {
+  UNKNOWN,
+  OFF,
+  ON,
+  TRANS
+};
+
 static inline void xchg(int &a,  int &b)
 {
   int x = a;
@@ -53,6 +60,8 @@ int clock_error(int T);
 // calculates precise day of week
 int dayOfWeek(uint8_t year, uint8_t month, uint8_t day);
 int getMonthDays(uint8_t month, uint8_t year);
+
+DST isDaylightSavingPeriod(uint8_t y, uint8_t m, uint8_t d, uint8_t h);
 
 // lightweight linear pseudo-RNG
 int getRand();

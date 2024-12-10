@@ -333,6 +333,42 @@ int getMonthDays(uint8_t month, uint8_t year)
   return d;
 }
 
+uint8_t findLastSunday(uint8_t m, uint8_t y)
+{
+  uint8_t d;
+  for (d = getMonthDays(m, y); d; d--) {
+    if (dayOfWeek(y, m, d) == 1) {
+      // found last sunday
+      break;
+    }
+  }
+  return d;
+}
+
+DST isDaylightSavingPeriod(uint8_t y, uint8_t m, uint8_t d, uint8_t h)
+{
+  static uint8_t cache_year;
+  static uint8_t cache_start;
+  static uint8_t cache_end;
+  if (cache_year != y) {
+    cache_year = y;
+    cache_start = findLastSunday(3, y);
+    cache_end = findLastSunday(10, y);
+  }
+  if (m > 3 && m < 10) {
+    return DST::ON;
+  } else if (m == 3 && d >= cache_start && h >= 2) {
+    return DST::ON;
+  } else if (m == 10 && d <= cache_end && h < 3) {
+    if (h >= 2) {
+      return DST::TRANS;
+    } else {
+      return DST::ON;
+    }
+  }
+  return DST::OFF;
+}
+
 int getRand()
 {
   int val = (rand_last * 1103515245) + 12345;

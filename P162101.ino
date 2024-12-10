@@ -70,6 +70,8 @@ static uint8_t *frontbuffer = &buffers[0][0];
 static uint8_t *backbuffer = &buffers[1][0];
 static uint32_t viewport_x = 0;
 static HardwareTimer display_timer;
+static DST dst_state = DST::UNKNOWN;
+static bool dst_fts = false;
 
 extern "C" void HardFault_Handler(void)
 {
@@ -160,6 +162,22 @@ void xorPixel(int x, int y)
   }
 }
 
+void setPixel(int x, int y)
+{
+  uint8_t p = 1 << y;
+  if (x >= 0 && x < BUFFER_SIZE) {
+    backbuffer[x] |= p;
+  }
+}
+
+void resetPixel(int x, int y)
+{
+  uint8_t p = 1 << y;
+  if (x >= 0 && x < BUFFER_SIZE) {
+    backbuffer[x] &= ~p;
+  }
+}
+
 bool getPixel(int x, int y)
 {
   uint8_t p = 1 << y;
@@ -213,6 +231,72 @@ bool readClock(char *str, int type)
   uint8_t reg[7];
   int day;
   if (readRTC(MCP79410_RTCSEC, reg, sizeof(reg))) {
+    DST newDst = isDaylightSavingPeriod(bcdPack(reg[6]), bcdPack(reg[5] & 0x1F), bcdPack(reg[4] & 0x3F), bcdPack(reg[2] & 0x3F));
+    if (test_mode()) {
+      switch (newDst) {
+        case DST::ON:
+        case DST::TRANS:
+          setPixel(0, 1);
+          break;
+        default:
+          resetPixel(0, 1);
+          break;
+      }
+    }
+
+    DST old_dst = dst_state;
+
+    // show notification that time is incorrect!
+    if (!dst_fts && newDst != dst_state) {
+      dst_state = DST::UNKNOWN;
+    }
+    dst_fts = true;
+
+    switch (dst_state) {
+      case DST::UNKNOWN:
+        // memory corrupted, reset DST state based on the
+        // current date and time
+        if (newDst == DST::TRANS) {
+          newDst = DST::ON;
+        } else {
+          dst_state = newDst;
+        }
+        break;
+      case DST::OFF:
+        // check for OFF -> ON transition
+        // and handle adding 1 hour to the clock
+        if (newDst == DST::ON) {
+          reg[2] = (reg[2] & 0xC0) | bcdUnpack((bcdPack(reg[2] & 0x3F) + 1) % 24);
+          writeRTC(MCP79410_RTCHOUR, &reg[2], 1);
+          dst_state = DST::ON;
+        }
+        break;
+      case DST::ON:
+        // check for ON -> OFF transition
+        // and handle subtracting 1 hour from clock
+        if (newDst == DST::OFF) {
+          reg[2] = (reg[2] & 0xC0) | bcdUnpack((bcdPack(reg[2] & 0x3F) - 1) % 24);
+          writeRTC(MCP79410_RTCHOUR, &reg[2], 1);
+          dst_state = DST::TRANS;
+        }
+        break;
+      case DST::TRANS:
+        // 02:00 -> 03:00 DST will report DST::TRANS so we have to wait for DST:: ON/OFF
+        switch (newDst) {
+          case DST::OFF:
+          case DST::ON:
+            dst_state = DST::OFF;
+            break;
+          default:
+            break;
+        }
+        break;
+    }
+
+    if (old_dst != dst_state) {
+      writeRTC_dst(dst_state);
+    }
+
     switch (type) {
       case -1:
         str[0] = ((reg[2] >> 4) & 0x03) + '0'; // h
@@ -484,6 +568,12 @@ void setup()
       writeEEPROM(0x00, seed, 4);
     }
 
+    // load DST state
+    readRTC(0x24, seed, 2);
+    if ((seed[0] ^ seed[1]) == 0xFF) {
+      dst_state = (DST)seed[0];
+    }
+
     // load last display
     readRTC(0x22, seed, 2);
     if ((seed[0] ^ seed[1]) == 0xFF) {
@@ -707,6 +797,13 @@ void writeRTC_display(uint8_t b)
   writeRTC(0x22, dat, sizeof(dat));
 }
 
+void writeRTC_dst(DST dst)
+{
+  uint8_t b = (uint8_t)dst;
+  uint8_t dat[] = { b, ~b };
+  writeRTC(0x24, dat, sizeof(dat));
+}
+
 void handle_button(int button)
 {
   bool longpress = button & 0x80000000;
@@ -763,6 +860,7 @@ void handle_button(int button)
         writeRTC(MCP79410_RTCMIN, &data, 1);
         break;
       case GPIO_B1_BIT:
+        dst_fts = false;
         readRTC(MCP79410_RTCHOUR, &data, 1);
         data = (data & 0xC0) | bcdUnpack((bcdPack(data & 0x3F) + 1) % 24);
         writeRTC(MCP79410_RTCHOUR, &data, 1);
@@ -792,6 +890,7 @@ void handle_button(int button)
         writeRTC(MCP79410_RTCYEAR, &data, 1);
         break;
     }
+    dst_fts = false;
     break;
   case 5:
     // game screen buttons
