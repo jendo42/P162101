@@ -747,29 +747,8 @@ void handle_button(int button)
       }
       writeRTC_display(new_display);
     }
-  }
-  if (tm) {
-    switch (button) {
-      case GPIO_B3_BIT:
-        --clock_trim;
-        writeRTC_trim(clock_trim);
-        break;
-      case GPIO_B2_BIT:
-        readRTC(MCP79410_CONTROL, &data, 1);
-        data ^= bit(MCP79410_CONTROL_CRSTRIM);
-        writeRTC(MCP79410_CONTROL, &data, 1);
-        if (data & bit(MCP79410_CONTROL_CRSTRIM)) {
-          showMessage("TRIM  on", 128*4);
-        } else {
-          showMessage("TRIM  off", 128*4);
-        }
-        break;
-      case GPIO_B1_BIT:
-        ++clock_trim;
-        writeRTC_trim(clock_trim);
-        break;
-    }
-  } else switch (disp) {
+  } 
+  switch (disp) {
   case -1:
     // clock screen buttons
     switch (button) {
@@ -828,6 +807,28 @@ void handle_button(int button)
         break;
     }
     break;
+  case 8:
+    // trimm setting
+    switch (button) {
+      case GPIO_B3_BIT:
+        --clock_trim;
+        writeRTC_trim(clock_trim);
+        break;
+      case GPIO_B2_BIT:
+        readRTC(MCP79410_CONTROL, &data, 1);
+        data ^= bit(MCP79410_CONTROL_CRSTRIM);
+        writeRTC(MCP79410_CONTROL, &data, 1);
+        if (data & bit(MCP79410_CONTROL_CRSTRIM)) {
+          showMessage("TRIM  on", 128*4);
+        } else {
+          showMessage("TRIM  off", 128*4);
+        }
+        break;
+      case GPIO_B1_BIT:
+        ++clock_trim;
+        writeRTC_trim(clock_trim);
+        break;
+    }
   }
 }
 
