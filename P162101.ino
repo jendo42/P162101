@@ -581,12 +581,15 @@ void setup()
     if (*(uint32_t *)seed != 0xFAC7BABE) {
       // force add DST
       dst_factory_force = true;
+      dst_state = DST::UNKNOWN;
     }
 
-    // load DST state
-    readRTC(0x24, seed, 2);
-    if ((seed[0] ^ seed[1]) == 0xFF) {
-      dst_state = (DST)seed[0];
+    if (!dst_factory_force) {
+      // load DST state
+      readRTC(0x24, seed, 2);
+      if ((seed[0] ^ seed[1]) == 0xFF) {
+        dst_state = (DST)seed[0];
+      }
     }
 
     // load last display
