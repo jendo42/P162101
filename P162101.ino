@@ -1004,7 +1004,7 @@ void loop() {
   }
 
   if (autotransition_timeout) {
-    if (++autotransition_timeout >= 366) {
+    if (++autotransition_timeout >= 1000) {
       autotransition_timeout = 1;
       handle_button(GPIO_BOOT0_BIT);
     }
