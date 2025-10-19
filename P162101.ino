@@ -227,6 +227,69 @@ void swapBuffers()
   backbuffer = x;
 }
 
+void handleDst(DST newDst, uint8_t *reg)
+{
+  DST old_dst = dst_state;
+
+  // show notification that time is incorrect!
+  if (!dst_fts && newDst != dst_state) {
+    dst_state=DST::UNKNOWN;
+  }
+  dst_fts = true;
+
+  switch (dst_state) {
+    case DST::UNKNOWN:
+      // memory corrupted, reset DST state based on the
+      // current date and time
+      if (newDst == DST::TRANS) {
+        newDst = DST::ON;
+      } else {
+        dst_state = newDst;
+      }
+      if (dst_factory_force) {
+        // force decrement hour, factory override
+        dst_state = DST::ON;
+        dst_factory_force = false;
+        uint32_t sign = 0xFAC7BABE;
+        writeEEPROM(0x04, (uint8_t *)&sign, 4);
+      }
+      break;
+    case DST::OFF:
+      // check for OFF -> ON transition
+      // and handle adding 1 hour to the clock
+      if (newDst == DST::ON) {
+        reg[2] = (reg[2] & 0xC0) | bcdUnpack((bcdPack(reg[2] & 0x3F) + 1) % 24);
+        writeRTC(MCP79410_RTCHOUR, &reg[2], 1);
+        dst_state = DST::ON;
+      }
+      break;
+    case DST::ON:
+      // check for ON -> OFF transition
+      // and handle subtracting 1 hour from clock
+      if (newDst == DST::OFF) {
+        reg[2] = (reg[2] & 0xC0) | bcdUnpack((bcdPack(reg[2] & 0x3F) - 1) % 24);
+        writeRTC(MCP79410_RTCHOUR, &reg[2], 1);
+        dst_state = DST::TRANS;
+      }
+      break;
+    case DST::TRANS:
+      // 02:00 -> 03:00 DST will report DST::TRANS so we have to wait for DST:: ON/OFF
+      switch (newDst) {
+        case DST::OFF:
+        case DST::ON:
+          dst_state = DST::OFF;
+          break;
+        default:
+          break;
+      }
+      break;
+  }
+
+  if (old_dst != dst_state) {
+    writeRTC_dst(dst_state);
+  }
+}
+
 bool readClock(char *str, int type)
 {
   uint8_t reg[7];
@@ -245,66 +308,7 @@ bool readClock(char *str, int type)
       }
     }
 
-    DST old_dst = dst_state;
-
-    // show notification that time is incorrect!
-    if (!dst_fts && newDst != dst_state) {
-      dst_state = DST::UNKNOWN;
-    }
-    dst_fts = true;
-
-    switch (dst_state) {
-      case DST::UNKNOWN:
-        // memory corrupted, reset DST state based on the
-        // current date and time
-        if (newDst == DST::TRANS) {
-          newDst = DST::ON;
-        } else {
-          dst_state = newDst;
-        }
-        if (dst_factory_force) {
-          // force decrement hour, factory override
-          dst_state = DST::ON;
-          dst_factory_force = false;
-          uint32_t sign = 0xFAC7BABE;
-          writeEEPROM(0x04, (uint8_t *)&sign, 4);
-        }
-        break;
-      case DST::OFF:
-        // check for OFF -> ON transition
-        // and handle adding 1 hour to the clock
-        if (newDst == DST::ON) {
-          reg[2] = (reg[2] & 0xC0) | bcdUnpack((bcdPack(reg[2] & 0x3F) + 1) % 24);
-          writeRTC(MCP79410_RTCHOUR, &reg[2], 1);
-          dst_state = DST::ON;
-        }
-        break;
-      case DST::ON:
-        // check for ON -> OFF transition
-        // and handle subtracting 1 hour from clock
-        if (newDst == DST::OFF) {
-          reg[2] = (reg[2] & 0xC0) | bcdUnpack((bcdPack(reg[2] & 0x3F) - 1) % 24);
-          writeRTC(MCP79410_RTCHOUR, &reg[2], 1);
-          dst_state = DST::TRANS;
-        }
-        break;
-      case DST::TRANS:
-        // 02:00 -> 03:00 DST will report DST::TRANS so we have to wait for DST:: ON/OFF
-        switch (newDst) {
-          case DST::OFF:
-          case DST::ON:
-            dst_state = DST::OFF;
-            break;
-          default:
-            break;
-        }
-        break;
-    }
-
-    if (old_dst != dst_state) {
-      writeRTC_dst(dst_state);
-    }
-
+    handleDst(newDst, reg);
     switch (type) {
       case -1:
         str[0] = ((reg[2] >> 4) & 0x03) + '0'; // h
