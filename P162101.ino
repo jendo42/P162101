@@ -1082,7 +1082,6 @@ void loop() {
       str_buffer[0] = 'L';
       str_buffer[1] = ':';
       itoa(light_sensor, str_buffer+2, 10);
-      strupr(str_buffer);
       break;
     case 7:
       str_buffer[0] = 'P';
