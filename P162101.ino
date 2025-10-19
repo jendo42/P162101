@@ -532,7 +532,7 @@ void setup()
   Wire.setSDA(GPIO_SDA_BIT);
   Wire.setSCL(GPIO_SCL_BIT);
   Wire.begin();
-  Wire.setClock(100000);
+  Wire.setClock(500000);
   Wire.setTimeout(10);
 
   // enable test mode by pressing B1 and B3 together
