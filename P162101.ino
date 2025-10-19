@@ -783,7 +783,7 @@ void drawClock(char *str, bool reset)
 }
 
 #define SCREENS_BASE 6
-#define SCREENS_TEST 3
+#define SCREENS_TEST 4
 
 int get_screens()
 {
@@ -1100,6 +1100,15 @@ void loop() {
       str_buffer[0] = 'T';
       str_buffer[1] = ':';
       itoa(clock_trim, str_buffer+2, 10);
+      break;
+    case 9:
+      str_buffer[0] = 'D';
+      str_buffer[1] = ':';
+      str_buffer[2] = dst_fts ? '1' : '0';
+      str_buffer[3] = ',';
+      str_buffer[4] = dst_factory_force ? '1' : '0';
+      str_buffer[5] = ',';
+      itoa((int)dst_state, str_buffer+6, 10);
       break;
     default:
       break;
