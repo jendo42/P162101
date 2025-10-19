@@ -1143,13 +1143,15 @@ void loop() {
 
   // display transition effect
   static int transition_cnt;
-  int transition_frame = transition_cnt;
+  static int transition_speed;
+  int transition_frame = transition_cnt / 50;
   int textDiff = textWidth - MAT_COLS;
   switch (init_sequence) {
     case SEQ::IDLE:
       if (new_display != display) {
         init_sequence = SEQ::DISPT1;
         autoscroll = false;
+        transition_speed = 0;
       }
       if (textWidth >= MAT_COLS) {
         // autoscroll text that exceeds screen width
@@ -1168,8 +1170,11 @@ void loop() {
       }
       break;
     case SEQ::DISPT2:
+      if (transition_speed > 0) {
+        --transition_speed;
+      }
       viewport_x = transition_frame;
-      ++transition_cnt;
+      transition_cnt += transition_speed;
       if ((transition_frame % BUFFER_SIZE) == 0) {
         new_display = display;
         transition_cnt = 0;
@@ -1178,7 +1183,10 @@ void loop() {
       break;
     case SEQ::DISPT1:
       viewport_x = transition_frame;
-      ++transition_cnt;
+      transition_cnt += transition_speed;
+      if (transition_speed < 250) {
+        transition_speed++;
+      }
       if (transition_frame >= MAT_COLS) {
         xchg(display, new_display);
         init_sequence = SEQ::DISPT2;
