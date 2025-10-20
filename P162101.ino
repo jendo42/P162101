@@ -232,10 +232,7 @@ void handleDst(DST newDst, uint8_t *reg)
 
   // show notification that time is incorrect!
   if (!dst_fts && newDst != dst_state) {
-    dst_state = DST::UNKNOWN;
-    if (test_mode()) {
-      showMessage(" DST! ", 128 * 4);
-    }
+    dst_state=DST::UNKNOWN;
   }
   dst_fts = true;
 
