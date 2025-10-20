@@ -295,7 +295,11 @@ bool readClock(char *str, int type)
   uint8_t reg[7];
   int day;
   if (readRTC(MCP79410_RTCSEC, reg, sizeof(reg))) {
-    DST newDst = isDaylightSavingPeriod(bcdPack(reg[6]), bcdPack(reg[5] & 0x1F), bcdPack(reg[4] & 0x3F), bcdPack(reg[2] & 0x3F));
+    uint8_t h = reg[2] & 0x3F;
+    uint8_t d = reg[4] & 0x3F;
+    uint8_t m = reg[5] & 0x1F;
+    uint8_t y = reg[6];
+    DST newDst = isDaylightSavingPeriod(bcdPack(y), bcdPack(m), bcdPack(d), bcdPack(h));
     if (test_mode()) {
       switch (newDst) {
         case DST::ON:
@@ -311,8 +315,8 @@ bool readClock(char *str, int type)
     handleDst(newDst, reg);
     switch (type) {
       case -1:
-        str[0] = ((reg[2] >> 4) & 0x03) + '0'; // h
-        str[1] = ((reg[2] >> 0) & 0x0F) + '0';
+        str[0] = ((h >> 4) & 0x03) + '0'; // h
+        str[1] = ((h >> 0) & 0x0F) + '0';
         str[2] = ':';
         str[3] = ((reg[1] >> 4) & 0x07) + '0'; // m
         str[4] = ((reg[1] >> 0) & 0x0F) + '0';
@@ -322,23 +326,23 @@ bool readClock(char *str, int type)
         str[8] = 0;
         break;
       case 0:
-        day = dayOfWeek(bcdPack(reg[6]), bcdPack(reg[5] & 0x1F), bcdPack(reg[4] & 0x3F)) - 1;
+        day = dayOfWeek(bcdPack(y), bcdPack(m), bcdPack(d)) - 1;
         strcpy(str, weekday_names_sk[day]);
         strupr(str);
         break;
       case 1:
-        str[0] = ((reg[4] >> 4) & 0x03) + '0'; // d
-        str[1] = ((reg[4] >> 0) & 0x0F) + '0';
+        str[0] = ((d >> 4) & 0x03) + '0'; // d
+        str[1] = ((d >> 0) & 0x0F) + '0';
         str[2] = '.';
-        str[3] = ((reg[5] >> 4) & 0x01) + '0'; // m
-        str[4] = ((reg[5] >> 0) & 0x0F) + '0';
+        str[3] = ((m >> 4) & 0x01) + '0'; // m
+        str[4] = ((m >> 0) & 0x0F) + '0';
         str[5] = '.';
-        str[6] = ((reg[6] >> 4) & 0x0F) + '0'; // y
-        str[7] = ((reg[6] >> 0) & 0x0F) + '0';
+        str[6] = ((y >> 4) & 0x0F) + '0'; // y
+        str[7] = ((y >> 0) & 0x0F) + '0';
         str[8] = 0;
         break;
       case 2:
-        strcpy(str, calendar_names_sk[bcdPack(reg[5] & 0x1F) - 1][bcdPack(reg[4] & 0x3F) - 1]);
+        strcpy(str, calendar_names_sk[bcdPack(m) - 1][bcdPack(d) - 1]);
         strupr(str);
         break;
       default:
