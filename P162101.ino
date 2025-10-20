@@ -1,5 +1,4 @@
 #include <Wire.h>
-#include <SPI.h>
 
 #include "P162101.h"
 #include "MCP79410.h"
