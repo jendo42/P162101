@@ -345,22 +345,30 @@ uint8_t findLastSunday(uint8_t m, uint8_t y)
   return d;
 }
 
+uint32_t getHoursFromYearStart(uint8_t y, uint8_t m, uint8_t d, uint8_t h)
+{
+  uint32_t totalDays = d;
+  for (int i = 1; i <= m; i++) {
+    totalDays += getMonthDays(m, y);
+  }
+  return totalDays * 24 + h;
+}
+
 DST isDaylightSavingPeriod(uint8_t y, uint8_t m, uint8_t d, uint8_t h)
 {
   static uint8_t cache_year;
-  static uint8_t cache_start;
-  static uint8_t cache_end;
+  static uint32_t cache_start;
+  static uint32_t cache_trans;
+  static uint32_t cache_end;
   if (cache_year != y) {
     cache_year = y;
-    cache_start = findLastSunday(3, y);
-    cache_end = findLastSunday(10, y);
+    cache_start = getHoursFromYearStart(y, 3, findLastSunday(3, y), 2);
+    cache_end = getHoursFromYearStart(y, 10, findLastSunday(10, y), 3);
+    cache_trans = cache_end - 1;
   }
-  if (m > 3 && m < 10) {
-    return DST::ON;
-  } else if (m == 3 && d >= cache_start && h >= 2) {
-    return DST::ON;
-  } else if (m == 10 && d <= cache_end && h < 3) {
-    if (h >= 2) {
+  uint32_t current = getHoursFromYearStart(y, m, d, h);
+  if (current >= cache_start && current < cache_end) {
+    if (current >= cache_trans) {
       return DST::TRANS;
     } else {
       return DST::ON;
